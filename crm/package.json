@@ -1,0 +1,14 @@
+{
+  "name": "signal-ridge-crm",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "setup": "cd server && npm install && npx prisma migrate dev --name init && npm run db:seed",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

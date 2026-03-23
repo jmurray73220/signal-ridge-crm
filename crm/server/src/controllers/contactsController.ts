@@ -1,0 +1,232 @@
+import { Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { AuthRequest } from '../types';
+
+const prisma = new PrismaClient();
+
+export async function getContacts(req: AuthRequest, res: Response) {
+  const { entity, tag, name, rank, search } = req.query;
+
+  const where: any = {};
+
+  if (name || search) {
+    const q = (name || search) as string;
+    where.OR = [
+      { firstName: { contains: q } },
+      { lastName: { contains: q } },
+    ];
+  }
+
+  if (entity) where.entityId = entity as string;
+  if (rank) where.rank = { contains: rank as string };
+
+  try {
+    const contacts = await prisma.contact.findMany({
+      where,
+      include: {
+        entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } },
+        interactions: {
+          include: { interaction: { select: { date: true } } },
+          orderBy: { interaction: { date: 'desc' } },
+          take: 1,
+        },
+        createdBy: { select: { firstName: true, lastName: true } },
+        updatedBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const result = contacts.map(c => ({
+      ...c,
+      tags: JSON.parse(c.tags || '[]'),
+      lastInteraction: c.interactions[0]?.interaction?.date || null,
+    }));
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function getContact(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const contact = await prisma.contact.findUnique({
+      where: { id },
+      include: {
+        entity: true,
+        initiatives: {
+          include: {
+            initiative: {
+              include: { primaryEntity: { select: { id: true, name: true, entityType: true } } },
+            },
+          },
+        },
+        interactions: {
+          include: {
+            interaction: {
+              include: {
+                entity: { select: { id: true, name: true, entityType: true } },
+                initiative: { select: { id: true, title: true } },
+              },
+            },
+          },
+          orderBy: { interaction: { date: 'desc' } },
+        },
+        tasks: {
+          include: {
+            entity: { select: { id: true, name: true, entityType: true } },
+            initiative: { select: { id: true, title: true } },
+          },
+          orderBy: { dueDate: 'asc' },
+        },
+        createdBy: { select: { firstName: true, lastName: true } },
+        updatedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    return res.json({
+      ...contact,
+      tags: JSON.parse(contact.tags || '[]'),
+      entity: contact.entity ? {
+        ...contact.entity,
+        tags: JSON.parse(contact.entity.tags || '[]'),
+        committee: JSON.parse((contact.entity as any).committee || '[]'),
+        contractVehicles: JSON.parse((contact.entity as any).contractVehicles || '[]'),
+      } : null,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function createContact(req: AuthRequest, res: Response) {
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, bio, tags, entityId } = req.body;
+
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: 'First and last name required' });
+  }
+
+  try {
+    const contact = await prisma.contact.create({
+      data: {
+        firstName,
+        lastName,
+        rank: rank || null,
+        title: title || null,
+        email: email || null,
+        officePhone: officePhone || null,
+        cell: cell || null,
+        linkedIn: linkedIn || null,
+        bio: bio || null,
+        tags: JSON.stringify(tags || []),
+        entityId: entityId || null,
+        createdByUserId: req.user!.userId,
+        updatedByUserId: req.user!.userId,
+      },
+      include: { entity: { select: { id: true, name: true, entityType: true } } },
+    });
+    return res.status(201).json({ ...contact, tags: JSON.parse(contact.tags || '[]') });
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function updateContact(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, bio, tags, entityId } = req.body;
+
+  try {
+    const contact = await prisma.contact.update({
+      where: { id },
+      data: {
+        ...(firstName && { firstName }),
+        ...(lastName && { lastName }),
+        rank: rank !== undefined ? rank : undefined,
+        title: title !== undefined ? title : undefined,
+        email: email !== undefined ? email : undefined,
+        officePhone: officePhone !== undefined ? officePhone : undefined,
+        cell: cell !== undefined ? cell : undefined,
+        linkedIn: linkedIn !== undefined ? linkedIn : undefined,
+        bio: bio !== undefined ? bio : undefined,
+        ...(tags !== undefined && { tags: JSON.stringify(tags) }),
+        entityId: entityId !== undefined ? entityId : undefined,
+        updatedByUserId: req.user!.userId,
+      },
+      include: { entity: { select: { id: true, name: true, entityType: true } } },
+    });
+    return res.json({ ...contact, tags: JSON.parse(contact.tags || '[]') });
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function deleteContact(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    await prisma.contact.delete({ where: { id } });
+    return res.json({ message: 'Contact deleted' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function getContactInteractions(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const items = await prisma.interactionContact.findMany({
+      where: { contactId: id },
+      include: {
+        interaction: {
+          include: {
+            entity: { select: { id: true, name: true, entityType: true } },
+            initiative: { select: { id: true, title: true } },
+            contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
+          },
+        },
+      },
+      orderBy: { interaction: { date: 'desc' } },
+    });
+    return res.json(items.map(i => i.interaction));
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function getContactInitiatives(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const items = await prisma.initiativeContact.findMany({
+      where: { contactId: id },
+      include: {
+        initiative: {
+          include: {
+            primaryEntity: { select: { id: true, name: true, entityType: true } },
+          },
+        },
+      },
+    });
+    return res.json(items);
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function getContactTasks(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const tasks = await prisma.task.findMany({
+      where: { contactId: id },
+      include: {
+        entity: { select: { id: true, name: true, entityType: true } },
+        initiative: { select: { id: true, title: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+    return res.json(tasks);
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
