@@ -52,6 +52,17 @@ export function EntityTypeBadge({ entityType, chamber, governmentType, className
     );
   }
 
+  if (entityType === 'Client') {
+    return (
+      <span
+        className={`badge ${className}`}
+        style={{ background: '#1a2e1a', color: '#4ade80' }}
+      >
+        CLIENT
+      </span>
+    );
+  }
+
   if (entityType === 'NGO') {
     return (
       <span

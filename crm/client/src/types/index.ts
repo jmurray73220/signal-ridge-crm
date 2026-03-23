@@ -1,5 +1,5 @@
 export type UserRole = 'Admin' | 'Editor' | 'Viewer';
-export type EntityType = 'CongressionalOffice' | 'GovernmentOrganization' | 'Company' | 'NGO' | 'Other';
+export type EntityType = 'CongressionalOffice' | 'GovernmentOrganization' | 'Company' | 'Client' | 'NGO' | 'Other';
 export type Chamber = 'Senate' | 'House';
 export type Party = 'Republican' | 'Democrat' | 'Independent';
 export type GovernmentType = 'DoD' | 'Intel' | 'DHS' | 'State' | 'Other';
@@ -120,6 +120,25 @@ export interface Interaction {
   updatedAt: string;
   createdBy?: { firstName: string; lastName: string };
   updatedBy?: { firstName: string; lastName: string };
+}
+
+export interface Reminder {
+  id: string;
+  title: string;
+  notes?: string;
+  remindAt: string;
+  completed: boolean;
+  completedAt?: string;
+  contactId?: string;
+  contact?: { id: string; firstName: string; lastName: string };
+  entityId?: string;
+  entity?: Entity;
+  initiativeId?: string;
+  initiative?: { id: string; title: string };
+  interactionId?: string;
+  interaction?: { id: string; subject: string; type: string; date: string };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Task {

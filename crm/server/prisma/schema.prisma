@@ -20,6 +20,8 @@ model User {
   isActive           Boolean   @default(true)
   mustChangePassword Boolean   @default(false)
   lastLogin          DateTime?
+  resetToken         String?
+  resetTokenExpiry   DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -34,6 +36,8 @@ model User {
   interactionsUpdated Interaction[] @relation("InteractionUpdatedBy")
   tasksCreated        Task[]        @relation("TaskCreatedBy")
   tasksUpdated        Task[]        @relation("TaskUpdatedBy")
+  remindersCreated    Reminder[]    @relation("ReminderCreatedBy")
+  remindersUpdated    Reminder[]    @relation("ReminderUpdatedBy")
 }
 
 model Contact {
@@ -60,6 +64,7 @@ model Contact {
   initiatives  InitiativeContact[]
   interactions InteractionContact[]
   tasks        Task[]
+  reminders    Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -104,6 +109,7 @@ model Entity {
   initiativeLinks InitiativeEntity[]
   interactions    Interaction[]
   tasks           Task[]
+  reminders       Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -130,6 +136,7 @@ model Initiative {
   entities     InitiativeEntity[]
   interactions Interaction[]
   tasks        Task[]
+  reminders    Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -175,7 +182,8 @@ model Interaction {
   createdBy       User?   @relation("InteractionCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy       User?   @relation("InteractionUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  contacts InteractionContact[]
+  contacts  InteractionContact[]
+  reminders Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -209,6 +217,33 @@ model Task {
   updatedByUserId String?
   createdBy       User?   @relation("TaskCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy       User?   @relation("TaskUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Reminder {
+  id            String    @id @default(uuid())
+  title         String
+  notes         String?
+  remindAt      DateTime
+  completed     Boolean   @default(false)
+  completedAt   DateTime?
+
+  contactId     String?
+  entityId      String?
+  initiativeId  String?
+  interactionId String?
+
+  contact      Contact?     @relation(fields: [contactId], references: [id])
+  entity       Entity?      @relation(fields: [entityId], references: [id])
+  initiative   Initiative?  @relation(fields: [initiativeId], references: [id])
+  interaction  Interaction? @relation(fields: [interactionId], references: [id])
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdBy       User?   @relation("ReminderCreatedBy", fields: [createdByUserId], references: [id])
+  updatedBy       User?   @relation("ReminderUpdatedBy", fields: [updatedByUserId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

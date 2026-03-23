@@ -5,7 +5,7 @@ import type { Entity, EntityType } from '../types';
 import toast from 'react-hot-toast';
 
 const ENTITY_TAGS = ['Priority Account', 'Active Contract', 'Oversight', 'Appropriations', 'Authorization', 'FYDP', 'Current Client', 'Prospect'];
-const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'NGO', 'Other'];
+const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'NGO', 'Other'];
 
 interface Props {
   entity?: Entity;
@@ -76,7 +76,7 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
         data.subComponent = form.subComponent || null;
         data.governmentType = form.governmentType || null;
         data.budgetLineItem = form.budgetLineItem || null;
-      } else if (form.entityType === 'Company') {
+      } else if (form.entityType === 'Company' || form.entityType === 'Client') {
         data.industry = form.industry || null;
         data.contractVehicles = form.contractVehicles ? form.contractVehicles.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
       }
@@ -195,6 +195,20 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
               <div>
                 <label className="label">Industry</label>
                 <input className="input" value={form.industry} onChange={set('industry')} placeholder="Defense & Intelligence Contractor" />
+              </div>
+              <div>
+                <label className="label">Contract Vehicles (comma-separated)</label>
+                <input className="input" value={form.contractVehicles} onChange={set('contractVehicles')} placeholder="OASIS+, SEWP VI, GSA MAS" />
+              </div>
+            </>
+          )}
+
+          {/* Client fields */}
+          {form.entityType === 'Client' && (
+            <>
+              <div>
+                <label className="label">Industry</label>
+                <input className="input" value={form.industry} onChange={set('industry')} placeholder="Aerospace & Defense" />
               </div>
               <div>
                 <label className="label">Contract Vehicles (comma-separated)</label>

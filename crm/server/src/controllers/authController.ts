@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest, JwtPayload } from '../types';
@@ -114,6 +115,106 @@ export async function changePassword(req: AuthRequest, res: Response) {
 
     return res.json({ message: 'Password updated' });
   } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function register(req: Request, res: Response) {
+  const { email, firstName, lastName, password } = req.body;
+  if (!email || !firstName || !lastName || !password) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        firstName,
+        lastName,
+        passwordHash,
+        role: 'Viewer',
+        mustChangePassword: false,
+      },
+    });
+
+    return res.status(201).json({ message: 'Account created successfully' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function forgotPassword(req: Request, res: Response) {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+
+    if (!user || !user.isActive) {
+      return res.json({ message: 'If that email is registered, a reset link has been generated.' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiry: expiry },
+    });
+
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+    return res.json({
+      message: 'Reset link generated. Share this link with the user.',
+      resetUrl,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: 'Token and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiry: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, resetToken: null, resetTokenExpiry: null, mustChangePassword: false },
+    });
+
+    return res.json({ message: 'Password reset successfully' });
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

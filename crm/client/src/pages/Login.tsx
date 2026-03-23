@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -107,6 +107,15 @@ export function Login() {
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
+
+          <div className="mt-5 pt-5 flex justify-between" style={{ borderTop: '1px solid #30363d' }}>
+            <Link to="/forgot-password" className="text-xs" style={{ color: '#8b949e', textDecoration: 'none' }}>
+              Forgot password?
+            </Link>
+            <Link to="/register" className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+              Create account
+            </Link>
+          </div>
         </div>
 
         <p className="text-center text-xs mt-6" style={{ color: '#8b949e' }}>

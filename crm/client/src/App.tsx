@@ -11,12 +11,17 @@ import { Contacts } from './pages/Contacts';
 import { ContactDetail } from './pages/ContactDetail';
 import { Congressional } from './pages/Congressional';
 import { Government } from './pages/Government';
-import { Companies } from './pages/Companies';
+import { Industry } from './pages/Industry';
+import { Clients } from './pages/Clients';
+import { Register } from './pages/Register';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { EntityDetail } from './pages/EntityDetail';
 import { Initiatives } from './pages/Initiatives';
 import { InitiativeDetail } from './pages/InitiativeDetail';
 import { Interactions } from './pages/Interactions';
 import { Tasks } from './pages/Tasks';
+import { Reminders } from './pages/Reminders';
 import { Users } from './pages/settings/Users';
 import { Account } from './pages/settings/Account';
 
@@ -51,6 +56,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/change-password" element={<ForceChangePassword />} />
       <Route
         path="/"
@@ -73,8 +81,12 @@ function AppRoutes() {
         element={<ProtectedRoute><Government /></ProtectedRoute>}
       />
       <Route
-        path="/companies"
-        element={<ProtectedRoute><Companies /></ProtectedRoute>}
+        path="/industry"
+        element={<ProtectedRoute><Industry /></ProtectedRoute>}
+      />
+      <Route
+        path="/clients"
+        element={<ProtectedRoute><Clients /></ProtectedRoute>}
       />
       <Route
         path="/entities/:id"
@@ -95,6 +107,10 @@ function AppRoutes() {
       <Route
         path="/tasks"
         element={<ProtectedRoute><Tasks /></ProtectedRoute>}
+      />
+      <Route
+        path="/reminders"
+        element={<ProtectedRoute><Reminders /></ProtectedRoute>}
       />
       <Route
         path="/settings/users"

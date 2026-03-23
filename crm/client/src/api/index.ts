@@ -1,5 +1,5 @@
 import api from './client';
-import type { Contact, Entity, Initiative, Interaction, Task, User } from '../types';
+import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User } from '../types';
 
 // Auth
 export const authApi = {
@@ -11,6 +11,12 @@ export const authApi = {
     api.post('/auth/change-password', { currentPassword, newPassword }),
   forceChangePassword: (newPassword: string) =>
     api.post('/auth/force-change-password', { newPassword }),
+  register: (data: { email: string; firstName: string; lastName: string; password: string }) =>
+    api.post('/auth/register', data),
+  forgotPassword: (email: string) =>
+    api.post<{ message: string; resetUrl?: string }>('/auth/forgot-password', { email }),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post('/auth/reset-password', { token, newPassword }),
 };
 
 // Contacts
@@ -93,6 +99,14 @@ export const usersApi = {
   updateRole: (id: string, role: string) => api.patch(`/api/users/${id}/role`, { role }),
   toggleActive: (id: string, isActive: boolean) =>
     api.patch(`/api/users/${id}/active`, { isActive }),
+};
+
+// Reminders
+export const remindersApi = {
+  list: (params?: Record<string, string>) => api.get<Reminder[]>('/api/reminders', { params }),
+  create: (data: Partial<Reminder> & { remindAt: string }) => api.post<Reminder>('/api/reminders', data),
+  update: (id: string, data: Partial<Reminder>) => api.put<Reminder>(`/api/reminders/${id}`, data),
+  delete: (id: string) => api.delete(`/api/reminders/${id}`),
 };
 
 // Export

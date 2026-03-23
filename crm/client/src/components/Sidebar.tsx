@@ -6,9 +6,11 @@ import {
   Building2,
   Landmark,
   Factory,
+  Briefcase,
   Target,
   MessageSquare,
   CheckSquare,
+  Bell,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -28,10 +30,12 @@ const navItems: NavItem[] = [
   { path: '/contacts', icon: <Users size={18} />, label: 'Contacts' },
   { path: '/congressional', icon: <Landmark size={18} />, label: 'Congressional', section: 'Entities' },
   { path: '/government', icon: <Building2 size={18} />, label: 'Government Orgs' },
-  { path: '/companies', icon: <Factory size={18} />, label: 'Companies' },
+  { path: '/industry', icon: <Factory size={18} />, label: 'Industry' },
+  { path: '/clients', icon: <Briefcase size={18} />, label: 'Clients' },
   { path: '/initiatives', icon: <Target size={18} />, label: 'Initiatives' },
   { path: '/interactions', icon: <MessageSquare size={18} />, label: 'Interactions' },
   { path: '/tasks', icon: <CheckSquare size={18} />, label: 'Tasks' },
+  { path: '/reminders', icon: <Bell size={18} />, label: 'Reminders' },
 ];
 
 export function Sidebar() {

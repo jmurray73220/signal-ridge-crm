@@ -1,12 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Landmark, Building2, Factory, Target, MessageSquare, CheckSquare, Plus, ChevronRight } from 'lucide-react';
-import { contactsApi, entitiesApi, initiativesApi, interactionsApi, tasksApi } from '../api';
+import { Users, Landmark, Building2, Factory, Target, MessageSquare, CheckSquare, Bell, Plus, ChevronRight } from 'lucide-react';
+import { contactsApi, entitiesApi, initiativesApi, interactionsApi, tasksApi, remindersApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { PriorityBadge } from '../components/StatusBadge';
 import toast from 'react-hot-toast';
-import type { Interaction, Task } from '../types';
+import type { Interaction, Reminder, Task } from '../types';
 
 function StatCard({ icon, label, value, to, color }: {
   icon: React.ReactNode;
@@ -88,6 +88,11 @@ export function Dashboard() {
     queryFn: () => tasksApi.list({ completed: 'false' }).then(r => r.data),
   });
 
+  const { data: reminders = [] } = useQuery({
+    queryKey: ['reminders'],
+    queryFn: () => remindersApi.list({ completed: 'false' }).then(r => r.data),
+  });
+
   const completeTask = useMutation({
     mutationFn: (id: string) => tasksApi.update(id, { completed: true }),
     onSuccess: () => {
@@ -104,6 +109,13 @@ export function Dashboard() {
 
   const dueSoonTasks = tasks.filter(t => !t.completed && (isDueSoon(t.dueDate) || isOverdue(t.dueDate)));
   const recentInteractions = [...interactions].slice(0, 10);
+
+  const urgentReminders = reminders.filter((r: Reminder) => {
+    const d = new Date(r.remindAt);
+    const now = new Date();
+    const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    return !r.completed && (isOverdue(r.remindAt) || isToday);
+  });
 
   return (
     <div>
@@ -122,12 +134,40 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Reminder alert strip */}
+      {urgentReminders.length > 0 && (
+        <div
+          className="rounded-lg px-4 py-3 mb-6 flex items-center justify-between"
+          style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.3)' }}
+        >
+          <div className="flex items-center gap-3">
+            <Bell size={16} style={{ color: '#c9a84c', flexShrink: 0 }} />
+            <div>
+              <span className="text-sm font-medium" style={{ color: '#c9a84c' }}>
+                {urgentReminders.length} reminder{urgentReminders.length > 1 ? 's' : ''} need{urgentReminders.length === 1 ? 's' : ''} your attention
+              </span>
+              <div className="text-xs mt-0.5" style={{ color: '#8b949e' }}>
+                {urgentReminders.slice(0, 2).map(r => r.title).join(' · ')}
+                {urgentReminders.length > 2 ? ` · +${urgentReminders.length - 2} more` : ''}
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/reminders"
+            className="text-xs flex items-center gap-1 flex-shrink-0"
+            style={{ color: '#c9a84c', textDecoration: 'none' }}
+          >
+            View all <ChevronRight size={12} />
+          </Link>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard icon={<Users size={20} />} label="Total Contacts" value={contacts.length} to="/contacts" color="#1a2a3a" />
         <StatCard icon={<Landmark size={20} />} label="Congressional Offices" value={senateCount + houseCount} to="/congressional" color="#1e3a5f" />
         <StatCard icon={<Building2 size={20} />} label="Government Orgs" value={govCount} to="/government" color="#0f2d1e" />
-        <StatCard icon={<Factory size={20} />} label="Companies" value={companyCount} to="/companies" color="#2a2a2a" />
+        <StatCard icon={<Factory size={20} />} label="Companies" value={companyCount} to="/industry" color="#2a2a2a" />
         <StatCard icon={<Target size={20} />} label="Active Initiatives" value={activeInitiatives} to="/initiatives" color="#2d1e00" />
         <StatCard icon={<MessageSquare size={20} />} label="Total Interactions" value={interactions.length} to="/interactions" color="#1e2a3a" />
         <StatCard icon={<CheckSquare size={20} />} label="Open Tasks" value={tasks.length} to="/tasks" color="#1a1a2e" />
