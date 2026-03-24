@@ -61,10 +61,11 @@ model Contact {
   createdBy       User?   @relation("ContactCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy       User?   @relation("ContactUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  initiatives  InitiativeContact[]
-  interactions InteractionContact[]
-  tasks        Task[]
-  reminders    Reminder[]
+  initiatives   InitiativeContact[]
+  interactions  InteractionContact[]
+  tasks         Task[]
+  reminders     Reminder[]
+  pendingEmails GmailPendingEmail[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -105,6 +106,7 @@ model Entity {
   updatedBy       User?   @relation("EntityUpdatedBy", fields: [updatedByUserId], references: [id])
 
   contacts        Contact[]
+  pendingEmails   GmailPendingEmail[]
   initiatives     Initiative[]     @relation("PrimaryEntity")
   initiativeLinks InitiativeEntity[]
   interactions    Interaction[]
@@ -245,6 +247,43 @@ model Reminder {
   createdBy       User?   @relation("ReminderCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy       User?   @relation("ReminderUpdatedBy", fields: [updatedByUserId], references: [id])
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Gmail Sync ───────────────────────────────────────────────────────────────
+
+model GmailCredential {
+  id           String    @id @default("singleton")
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  accountEmail String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model GmailSyncSettings {
+  id                  String    @id @default("singleton")
+  enabled             Boolean   @default(false)
+  syncIntervalMinutes Int       @default(60)
+  lastSyncAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model GmailPendingEmail {
+  id        String   @id @default(uuid())
+  threadId  String   @unique
+  subject   String
+  from      String
+  snippet   String?
+  emailDate DateTime
+  status    String   @default("pending") // pending | approved | dismissed
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  entityId  String?
+  entity    Entity?  @relation(fields: [entityId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -24,6 +24,8 @@ import { Tasks } from './pages/Tasks';
 import { Reminders } from './pages/Reminders';
 import { Users } from './pages/settings/Users';
 import { Account } from './pages/settings/Account';
+import { GmailSettings } from './pages/settings/Gmail';
+import { GmailReview } from './pages/GmailReview';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -113,12 +115,20 @@ function AppRoutes() {
         element={<ProtectedRoute><Reminders /></ProtectedRoute>}
       />
       <Route
+        path="/gmail/review"
+        element={<ProtectedRoute><GmailReview /></ProtectedRoute>}
+      />
+      <Route
         path="/settings/users"
         element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>}
       />
       <Route
         path="/settings/account"
         element={<ProtectedRoute><Account /></ProtectedRoute>}
+      />
+      <Route
+        path="/settings/gmail"
+        element={<ProtectedRoute><GmailSettings /></ProtectedRoute>}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

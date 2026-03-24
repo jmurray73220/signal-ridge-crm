@@ -16,6 +16,7 @@ import briefingRoutes from './routes/briefing';
 import gmailRoutes from './routes/gmail';
 import usersRoutes from './routes/users';
 import { errorHandler } from './middleware/errorHandler';
+import { startBackgroundSync } from './services/gmail';
 
 dotenv.config();
 
@@ -53,6 +54,8 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Signal Ridge CRM server running on port ${PORT}`);
+  // Start Gmail background sync if previously enabled
+  startBackgroundSync().catch(err => console.error('Failed to start Gmail sync:', err));
 });
 
 export default app;

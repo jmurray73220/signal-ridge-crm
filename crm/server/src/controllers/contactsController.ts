@@ -214,6 +214,62 @@ export async function getContactInitiatives(req: AuthRequest, res: Response) {
   }
 }
 
+export async function importContacts(req: AuthRequest, res: Response) {
+  const { contacts: rows } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'No contacts provided' });
+  }
+
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+
+  for (const row of rows) {
+    const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, bio, tags, organizationName, subcommittee } = row;
+    if (!firstName || !lastName) {
+      results.errors.push(`Skipped row: missing first or last name (${firstName || ''} ${lastName || ''})`);
+      results.skipped++;
+      continue;
+    }
+
+    try {
+      // Look up entity by name if provided
+      let entityId: string | null = null;
+      if (organizationName) {
+        const entity = await prisma.entity.findFirst({
+          where: { name: { equals: organizationName } },
+        });
+        if (entity) entityId = entity.id;
+      }
+
+      // For committee staff, subcommittee is stored in the rank field
+      const effectiveRank = subcommittee?.trim() || rank?.trim() || null;
+
+      await prisma.contact.create({
+        data: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          rank: effectiveRank,
+          title: title?.trim() || null,
+          email: email?.trim() || null,
+          officePhone: officePhone?.trim() || null,
+          cell: cell?.trim() || null,
+          linkedIn: linkedIn?.trim() || null,
+          bio: bio?.trim() || null,
+          tags: JSON.stringify(Array.isArray(tags) ? tags : (tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [])),
+          entityId,
+          createdByUserId: req.user!.userId,
+          updatedByUserId: req.user!.userId,
+        },
+      });
+      results.created++;
+    } catch (err) {
+      results.errors.push(`Failed to create ${firstName} ${lastName}: ${(err as Error).message}`);
+      results.skipped++;
+    }
+  }
+
+  return res.json(results);
+}
+
 export async function getContactTasks(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {

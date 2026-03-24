@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-prod';
 const JWT_EXPIRES_IN = '8h';
 
 export async function login(req: Request, res: Response) {
-  const { email, password } = req.body;
+  const { email, password, rememberMe } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -40,13 +40,15 @@ export async function login(req: Request, res: Response) {
       mustChangePassword: user.mustChangePassword,
     };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const sessionDuration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
+    const tokenExpiry = rememberMe ? '30d' : JWT_EXPIRES_IN;
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: tokenExpiry });
 
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      maxAge: sessionDuration,
     });
 
     return res.json({

@@ -1,0 +1,26 @@
+node_modules
+dist
+*.local
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+
+# Google credentials
+client_secret*.json
+credentials.json
+token.json
+*.p12
+*.pem
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

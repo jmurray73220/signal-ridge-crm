@@ -5,10 +5,21 @@ interface Props {
   chamber?: Chamber | null;
   governmentType?: GovernmentType | null;
   className?: string;
+  showAsHill?: boolean;
 }
 
-export function EntityTypeBadge({ entityType, chamber, governmentType, className = '' }: Props) {
+export function EntityTypeBadge({ entityType, chamber, governmentType, className = '', showAsHill = false }: Props) {
   if (entityType === 'CongressionalOffice') {
+    if (showAsHill) {
+      return (
+        <span
+          className={`badge ${className}`}
+          style={{ background: '#1e3a5f', color: '#60a5fa' }}
+        >
+          HILL
+        </span>
+      );
+    }
     if (chamber === 'Senate') {
       return (
         <span

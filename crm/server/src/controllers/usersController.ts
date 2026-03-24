@@ -65,6 +65,7 @@ export async function createUser(req: AuthRequest, res: Response) {
     });
     return res.status(201).json(user);
   } catch (err) {
+    console.error('createUser error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

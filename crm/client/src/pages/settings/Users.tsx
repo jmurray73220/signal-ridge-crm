@@ -29,10 +29,17 @@ function AddUserModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
       toast.success(`User ${form.email} created`);
       onSave();
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-        : undefined;
-      toast.error(message || 'Failed to create user');
+      console.error('Create user error:', err);
+      const axiosErr = err as { response?: { status?: number; data?: { error?: string } } };
+      const status = axiosErr?.response?.status;
+      const message = axiosErr?.response?.data?.error;
+      if (status === 401) {
+        toast.error('Session expired — please log in again');
+      } else if (status === 403) {
+        toast.error('Admin access required');
+      } else {
+        toast.error(message || 'Failed to create user');
+      }
     } finally {
       setLoading(false);
     }

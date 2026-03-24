@@ -1,5 +1,6 @@
 import { useState, Fragment, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Users,
@@ -11,12 +12,14 @@ import {
   MessageSquare,
   CheckSquare,
   Bell,
+  Mail,
   Settings,
   ChevronLeft,
   ChevronRight,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { gmailApi } from '../api';
 
 interface NavItem {
   path: string;
@@ -36,12 +39,21 @@ const navItems: NavItem[] = [
   { path: '/interactions', icon: <MessageSquare size={18} />, label: 'Interactions' },
   { path: '/tasks', icon: <CheckSquare size={18} />, label: 'Tasks' },
   { path: '/reminders', icon: <Bell size={18} />, label: 'Reminders' },
+  { path: '/gmail/review', icon: <Mail size={18} />, label: 'Gmail Review', section: 'Gmail' },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
+
+  const { data: gmailStatus } = useQuery({
+    queryKey: ['gmail-status'],
+    queryFn: () => gmailApi.status().then(r => r.data),
+    refetchInterval: 60_000,
+    enabled: !!user,
+  });
+  const gmailBadge = gmailStatus?.connected ? (gmailStatus.pendingCount ?? 0) : 0;
 
   return (
     <aside
@@ -122,8 +134,44 @@ export function Sidebar() {
                   textDecoration: 'none',
                 }}
               >
-                <span style={{ flexShrink: 0 }}>{item.icon}</span>
-                {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+                <span style={{ flexShrink: 0, position: 'relative' }}>
+                  {item.icon}
+                  {item.path === '/gmail/review' && gmailBadge > 0 && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -5,
+                        right: -6,
+                        background: '#c9a84c',
+                        color: '#0d1117',
+                        borderRadius: '99px',
+                        fontSize: 9,
+                        fontWeight: 700,
+                        minWidth: 14,
+                        height: 14,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0 3px',
+                      }}
+                    >
+                      {gmailBadge > 99 ? '99+' : gmailBadge}
+                    </span>
+                  )}
+                </span>
+                {!collapsed && (
+                  <span className="flex items-center gap-2 text-sm font-medium" style={{ flex: 1 }}>
+                    {item.label}
+                    {item.path === '/gmail/review' && gmailBadge > 0 && !collapsed && (
+                      <span
+                        className="text-xs font-medium px-1.5 py-0.5 rounded-full"
+                        style={{ background: '#c9a84c20', color: '#c9a84c' }}
+                      >
+                        {gmailBadge}
+                      </span>
+                    )}
+                  </span>
+                )}
               </Link>
             </Fragment>
           );

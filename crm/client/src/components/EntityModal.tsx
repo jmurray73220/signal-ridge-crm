@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { entitiesApi } from '../api';
 import type { Entity, EntityType } from '../types';
@@ -6,6 +6,22 @@ import toast from 'react-hot-toast';
 
 const ENTITY_TAGS = ['Priority Account', 'Active Contract', 'Oversight', 'Appropriations', 'Authorization', 'FYDP', 'Current Client', 'Prospect'];
 const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'NGO', 'Other'];
+
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS',
+  'KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY',
+  'NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+  'DC','PR','GU','VI','AS','MP',
+];
+
+function getPartyInitial(party: string): string {
+  if (party === 'Republican') return 'R';
+  if (party === 'Democrat') return 'D';
+  if (party === 'Independent') return 'I';
+  return '';
+}
+
+type CongressionalMode = 'personal' | 'committee';
 
 interface Props {
   entity?: Entity;
@@ -22,14 +38,21 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
     description: entity?.description || '',
     address: entity?.address || '',
     tags: entity?.tags || [] as string[],
-    // Congressional
-    memberName: entity?.memberName || '',
+    // Congressional — Personal Office
+    congFirstName: '',
+    congLastName: '',
+    nameManuallyEdited: !!entity,
+    memberName: entity?.memberName?.includes(' | Ranking: ') ? entity.memberName.split(' | Ranking: ')[0] : (entity?.memberName || ''),
+    rankingMember: entity?.memberName?.includes(' | Ranking: ') ? entity.memberName.split(' | Ranking: ')[1] : '',
     chamber: entity?.chamber || 'Senate',
     state: entity?.state || '',
     district: entity?.district || '',
     committee: (entity?.committee || []).join(', '),
     party: entity?.party || 'Republican',
     subcommittee: (entity?.subcommittee || []).join(', '),
+    // Congressional — Committee mode extra fields
+    committeeEmail: '',
+    committeePhone: '',
     // Government
     parentAgency: entity?.parentAgency || '',
     subComponent: entity?.subComponent || '',
@@ -41,6 +64,15 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
   });
   const [loading, setLoading] = useState(false);
 
+  // Auto-detect committee mode when editing: if entity name contains "Committee" or memberName has ranking info
+  const isExistingCommittee = entity?.entityType === 'CongressionalOffice' && (
+    entity.name.toLowerCase().includes('committee') ||
+    (entity.memberName || '').includes(' | Ranking: ')
+  );
+  const [congressionalMode, setCongressionalMode] = useState<CongressionalMode>(
+    isExistingCommittee ? 'committee' : 'personal'
+  );
+
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -49,6 +81,56 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
       ...f,
       tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag],
     }));
+
+  // Auto-generate display name for personal office congressional entries
+  const setCongField = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = e.target.value;
+    setForm(f => {
+      const updated = { ...f, [key]: value };
+      if (!f.nameManuallyEdited && congressionalMode === 'personal') {
+        const first = (key === 'congFirstName' ? value : f.congFirstName).trim();
+        const last = (key === 'congLastName' ? value : f.congLastName).trim();
+        const chamber = key === 'chamber' ? value : f.chamber;
+        const party = key === 'party' ? value : f.party;
+        const state = (key === 'state' ? value : f.state).toUpperCase();
+        const district = key === 'district' ? value : f.district;
+
+        if (first || last) {
+          const prefix = chamber === 'Senate' ? 'Sen.' : 'Rep.';
+          const partyInit = getPartyInitial(party);
+          let suffix = '';
+          if (partyInit && state) {
+            if (chamber === 'House' && district) {
+              suffix = ` (${partyInit}-${state}-${district})`;
+            } else {
+              suffix = ` (${partyInit}-${state})`;
+            }
+          }
+          updated.name = `${prefix} ${first} ${last}${suffix}`.trim();
+        }
+      }
+      return updated;
+    });
+  };
+
+  const autoDisplayName = useMemo(() => {
+    if (form.entityType !== 'CongressionalOffice' || congressionalMode !== 'personal') return '';
+    const first = form.congFirstName.trim();
+    const last = form.congLastName.trim();
+    if (!first && !last) return '';
+    const prefix = form.chamber === 'Senate' ? 'Sen.' : 'Rep.';
+    const partyInit = getPartyInitial(form.party);
+    const state = form.state.toUpperCase();
+    let suffix = '';
+    if (partyInit && state) {
+      if (form.chamber === 'House' && form.district) {
+        suffix = ` (${partyInit}-${state}-${form.district})`;
+      } else {
+        suffix = ` (${partyInit}-${state})`;
+      }
+    }
+    return `${prefix} ${first} ${last}${suffix}`.trim();
+  }, [form.congFirstName, form.congLastName, form.chamber, form.party, form.state, form.district, form.entityType, congressionalMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,13 +146,20 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
         tags: form.tags,
       };
       if (form.entityType === 'CongressionalOffice') {
-        data.memberName = form.memberName || null;
         data.chamber = form.chamber || null;
-        data.state = form.state || null;
+        data.party = form.party || null;
+        data.state = form.state.toUpperCase() || null;
         data.district = form.district || null;
         data.committee = form.committee ? form.committee.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-        data.party = form.party || null;
         data.subcommittee = form.subcommittee ? form.subcommittee.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+        // For committees, combine chair + ranking into memberName
+        if (congressionalMode === 'committee') {
+          const chair = form.memberName?.trim() || '';
+          const ranking = form.rankingMember?.trim() || '';
+          data.memberName = ranking ? `${chair} | Ranking: ${ranking}` : (chair || null);
+        } else {
+          data.memberName = form.memberName || null;
+        }
       } else if (form.entityType === 'GovernmentOrganization') {
         data.parentAgency = form.parentAgency || null;
         data.subComponent = form.subComponent || null;
@@ -105,51 +194,103 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Type row — half width type, plus congressional sub-type when applicable */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Name *</label>
-              <input className="input" value={form.name} onChange={set('name')} required />
-            </div>
             <div>
               <label className="label">Type *</label>
               <select className="input" value={form.entityType} onChange={set('entityType')}>
                 {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+            {form.entityType === 'CongressionalOffice' && (
+              <div>
+                <label className="label">Office Type *</label>
+                <select
+                  className="input"
+                  value={congressionalMode}
+                  onChange={e => {
+                    setCongressionalMode(e.target.value as CongressionalMode);
+                    setForm(f => ({ ...f, name: '', nameManuallyEdited: false }));
+                  }}
+                >
+                  <option value="personal">Personal Office</option>
+                  <option value="committee">Committee</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Congressional fields */}
-          {form.entityType === 'CongressionalOffice' && (
+          {/* ── Congressional: Personal Office ── */}
+          {form.entityType === 'CongressionalOffice' && congressionalMode === 'personal' && (
             <>
-              <div>
-                <label className="label">Member Name</label>
-                <input className="input" value={form.memberName} onChange={set('memberName')} placeholder="Sen. John Cornyn" />
-              </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="label">Chamber</label>
-                  <select className="input" value={form.chamber} onChange={set('chamber')}>
+                  <label className="label">Chamber *</label>
+                  <select className="input" value={form.chamber} onChange={setCongField('chamber')}>
                     <option value="Senate">Senate</option>
                     <option value="House">House</option>
                   </select>
                 </div>
                 <div>
-                  <label className="label">State</label>
-                  <input className="input" value={form.state} onChange={set('state')} placeholder="TX" maxLength={2} />
+                  <label className="label">First Name *</label>
+                  <input className="input" value={form.congFirstName} onChange={setCongField('congFirstName')} placeholder="Tim" required={!entity} />
                 </div>
                 <div>
-                  <label className="label">District (House only)</label>
-                  <input className="input" value={form.district} onChange={set('district')} placeholder="1st" />
+                  <label className="label">Last Name *</label>
+                  <input className="input" value={form.congLastName} onChange={setCongField('congLastName')} placeholder="Kaine" required={!entity} />
                 </div>
               </div>
-              <div>
-                <label className="label">Party</label>
-                <select className="input" value={form.party} onChange={set('party')}>
-                  <option value="Republican">Republican</option>
-                  <option value="Democrat">Democrat</option>
-                  <option value="Independent">Independent</option>
-                </select>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="label">Party</label>
+                  <select className="input" value={form.party} onChange={setCongField('party')}>
+                    <option value="Republican">Republican</option>
+                    <option value="Democrat">Democrat</option>
+                    <option value="Independent">Independent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">State</label>
+                  <select className="input" value={form.state} onChange={setCongField('state')}>
+                    <option value="">Select…</option>
+                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                {form.chamber === 'House' && (
+                  <div>
+                    <label className="label">District</label>
+                    <input className="input" value={form.district} onChange={setCongField('district')} placeholder="13" />
+                  </div>
+                )}
               </div>
+
+              <div>
+                <label className="label">Display Name *</label>
+                <input
+                  className="input"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value, nameManuallyEdited: true }))}
+                  placeholder="Sen. Tim Kaine (D-VA)"
+                  required
+                />
+                {autoDisplayName && form.nameManuallyEdited && form.name !== autoDisplayName && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, name: autoDisplayName, nameManuallyEdited: false }))}
+                    className="text-xs mt-1"
+                    style={{ color: '#c9a84c' }}
+                  >
+                    Reset to: {autoDisplayName}
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <label className="label">Member Full Name (optional)</label>
+                <input className="input" value={form.memberName} onChange={set('memberName')} placeholder="e.g. Senator Timothy Kaine" />
+              </div>
+
               <div>
                 <label className="label">Committees (comma-separated)</label>
                 <input className="input" value={form.committee} onChange={set('committee')} placeholder="Senate Armed Services Committee, Senate Judiciary Committee" />
@@ -159,6 +300,55 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
                 <input className="input" value={form.subcommittee} onChange={set('subcommittee')} placeholder="SASC Subcommittee on Emerging Threats…" />
               </div>
             </>
+          )}
+
+          {/* ── Congressional: Committee ── */}
+          {form.entityType === 'CongressionalOffice' && congressionalMode === 'committee' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Chamber *</label>
+                  <select className="input" value={form.chamber} onChange={set('chamber')}>
+                    <option value="Senate">Senate</option>
+                    <option value="House">House</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Committee Name *</label>
+                  <input
+                    className="input"
+                    value={form.name}
+                    onChange={set('name')}
+                    placeholder="Armed Services Committee"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Chair</label>
+                  <input className="input" value={form.memberName} onChange={set('memberName')} placeholder="Sen. Jack Reed (D-RI)" />
+                </div>
+                <div>
+                  <label className="label">Ranking Member</label>
+                  <input className="input" value={form.rankingMember} onChange={set('rankingMember')} placeholder="Sen. Roger Wicker (R-MS)" />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Telephone</label>
+                <input className="input" type="tel" value={form.committeePhone} onChange={set('committeePhone')} placeholder="(202) 224-3871" />
+              </div>
+            </>
+          )}
+
+          {/* ── Non-congressional: single name ── */}
+          {form.entityType !== 'CongressionalOffice' && (
+            <div>
+              <label className="label">Name *</label>
+              <input className="input" value={form.name} onChange={set('name')} required />
+            </div>
           )}
 
           {/* Government fields */}
@@ -189,26 +379,12 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
             </>
           )}
 
-          {/* Company fields */}
-          {form.entityType === 'Company' && (
+          {/* Company / Client fields */}
+          {(form.entityType === 'Company' || form.entityType === 'Client') && (
             <>
               <div>
                 <label className="label">Industry</label>
                 <input className="input" value={form.industry} onChange={set('industry')} placeholder="Defense & Intelligence Contractor" />
-              </div>
-              <div>
-                <label className="label">Contract Vehicles (comma-separated)</label>
-                <input className="input" value={form.contractVehicles} onChange={set('contractVehicles')} placeholder="OASIS+, SEWP VI, GSA MAS" />
-              </div>
-            </>
-          )}
-
-          {/* Client fields */}
-          {form.entityType === 'Client' && (
-            <>
-              <div>
-                <label className="label">Industry</label>
-                <input className="input" value={form.industry} onChange={set('industry')} placeholder="Aerospace & Defense" />
               </div>
               <div>
                 <label className="label">Contract Vehicles (comma-separated)</label>

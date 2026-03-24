@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { X, Plus } from 'lucide-react';
 import { contactsApi, entitiesApi } from '../api';
-import type { Contact } from '../types';
+import { EntityModal } from './EntityModal';
+import type { Contact, EntityType } from '../types';
 import toast from 'react-hot-toast';
 
 const CONTACT_TAGS = [
@@ -11,13 +12,26 @@ const CONTACT_TAGS = [
   'Gatekeeper', 'SITE 525'
 ];
 
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  CongressionalOffice: 'Congressional Office',
+  GovernmentOrganization: 'Government Organization',
+  Company: 'Company',
+  Client: 'Client',
+  NGO: 'NGO',
+  Other: 'Other',
+};
+
+const ALL_ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'NGO', 'Other'];
+
 interface Props {
   contact?: Contact;
+  defaultEntityId?: string;
   onClose: () => void;
   onSave: () => void;
 }
 
-export function ContactModal({ contact, onClose, onSave }: Props) {
+export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Props) {
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     firstName: contact?.firstName || '',
     lastName: contact?.lastName || '',
@@ -28,15 +42,50 @@ export function ContactModal({ contact, onClose, onSave }: Props) {
     cell: contact?.cell || '',
     linkedIn: contact?.linkedIn || '',
     bio: contact?.bio || '',
-    entityId: contact?.entityId || '',
+    entityId: contact?.entityId || defaultEntityId || '',
     tags: contact?.tags || [] as string[],
   });
   const [loading, setLoading] = useState(false);
+  const [entityTypeFilter, setEntityTypeFilter] = useState<string>('');
+  const [showNewEntity, setShowNewEntity] = useState(false);
 
   const { data: entities = [] } = useQuery({
     queryKey: ['entities'],
     queryFn: () => entitiesApi.list().then(r => r.data),
   });
+
+  // Auto-detect entity type from the selected entity or defaultEntityId
+  useState(() => {
+    if (form.entityId && entities.length > 0) {
+      const match = entities.find(e => e.id === form.entityId);
+      if (match) setEntityTypeFilter(match.entityType);
+    }
+  });
+
+  // Filter entities by selected type
+  const filteredEntities = useMemo(() => {
+    if (!entityTypeFilter) return entities;
+    return entities.filter(e => e.entityType === entityTypeFilter);
+  }, [entities, entityTypeFilter]);
+
+  // Auto-set type filter when entities load and we have a default
+  useMemo(() => {
+    if (form.entityId && entities.length > 0 && !entityTypeFilter) {
+      const match = entities.find(e => e.id === form.entityId);
+      if (match) setEntityTypeFilter(match.entityType);
+    }
+  }, [entities, form.entityId]);
+
+  // Detect if selected entity is a committee (name contains "Committee")
+  const selectedEntity = useMemo(() => {
+    if (!form.entityId) return null;
+    return entities.find(e => e.id === form.entityId) ?? null;
+  }, [form.entityId, entities]);
+
+  const isCommitteeEntity = useMemo(() => {
+    if (!selectedEntity) return false;
+    return selectedEntity.name.toLowerCase().includes('committee');
+  }, [selectedEntity]);
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }));
@@ -103,25 +152,89 @@ export function ContactModal({ contact, onClose, onSave }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Rank (optional)</label>
-              <input className="input" value={form.rank} onChange={set('rank')} placeholder="COL, RDML, SES…" />
+          {isCommitteeEntity ? (
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="label">Chamber</label>
+                <div className="input flex items-center text-sm" style={{ color: '#8b949e' }}>
+                  {selectedEntity?.chamber || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="label">Party</label>
+                <select
+                  className="input"
+                  value={form.tags.find(t => t === 'Republican' || t === 'Democrat' || t === 'Independent') || ''}
+                  onChange={e => {
+                    const party = e.target.value;
+                    setForm(f => ({
+                      ...f,
+                      tags: [...f.tags.filter(t => t !== 'Republican' && t !== 'Democrat' && t !== 'Independent'), ...(party ? [party] : [])],
+                    }));
+                  }}
+                >
+                  <option value="">—</option>
+                  <option value="Republican">Republican</option>
+                  <option value="Democrat">Democrat</option>
+                  <option value="Independent">Independent</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Subcommittee</label>
+                <input className="input" value={form.rank} onChange={set('rank')} placeholder="e.g. ISO" />
+              </div>
+              <div>
+                <label className="label">Title / Position</label>
+                <input className="input" value={form.title} onChange={set('title')} placeholder="Staff Director, Counsel…" />
+              </div>
             </div>
-            <div>
-              <label className="label">Title / Position</label>
-              <input className="input" value={form.title} onChange={set('title')} placeholder="Legislative Director…" />
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Rank (optional)</label>
+                <input className="input" value={form.rank} onChange={set('rank')} placeholder="COL, RDML, SES…" />
+              </div>
+              <div>
+                <label className="label">Title / Position</label>
+                <input className="input" value={form.title} onChange={set('title')} placeholder="Legislative Director…" />
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="label">Organization</label>
-            <select className="input" value={form.entityId} onChange={set('entityId')}>
-              <option value="">— None —</option>
-              {entities.map(e => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-4">
+              <select
+                className="input"
+                value={entityTypeFilter}
+                onChange={e => {
+                  setEntityTypeFilter(e.target.value);
+                  setForm(f => ({ ...f, entityId: '' }));
+                }}
+              >
+                <option value="">All Types</option>
+                {ALL_ENTITY_TYPES.map(t => (
+                  <option key={t} value={t}>{ENTITY_TYPE_LABELS[t] || t}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <select className="input flex-1" value={form.entityId} onChange={set('entityId')}>
+                  <option value="">— None —</option>
+                  {filteredEntities.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowNewEntity(true)}
+                  className="flex items-center gap-1 px-2.5 rounded text-xs whitespace-nowrap"
+                  style={{ color: '#c9a84c', border: '1px solid #30363d', background: '#161b22' }}
+                  title="Create new organization"
+                >
+                  <Plus size={13} /> New
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -186,6 +299,30 @@ export function ContactModal({ contact, onClose, onSave }: Props) {
           </div>
         </form>
       </div>
+
+      {/* Inline entity creation modal */}
+      {showNewEntity && (
+        <EntityModal
+          defaultType={(entityTypeFilter as EntityType) || undefined}
+          onClose={() => setShowNewEntity(false)}
+          onSave={async () => {
+            setShowNewEntity(false);
+            // Refetch entities so the new one appears in the dropdown
+            const res = await entitiesApi.list();
+            qc.setQueryData(['entities'], res.data);
+            // Auto-select the newly created entity (last one by createdAt)
+            const sorted = [...res.data].sort((a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            if (sorted.length > 0) {
+              const newest = sorted[0];
+              setEntityTypeFilter(newest.entityType);
+              setForm(f => ({ ...f, entityId: newest.id }));
+            }
+            toast.success('Organization created');
+          }}
+        />
+      )}
     </div>
   );
 }

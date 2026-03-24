@@ -92,7 +92,7 @@ export function ContactDetail() {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-2xl font-semibold" style={{ color: '#e6edf3' }}>
-                {contact.rank && <span>{contact.rank} </span>}
+                {contact.rank && !contact.entity?.name?.toLowerCase().includes('committee') && <span>{contact.rank} </span>}
                 {contact.firstName} {contact.lastName}
               </h1>
               {contact.entity && (
@@ -100,6 +100,7 @@ export function ContactDetail() {
                   entityType={contact.entity.entityType}
                   chamber={contact.entity.chamber}
                   governmentType={contact.entity.governmentType}
+                  showAsHill={contact.entity.entityType === 'CongressionalOffice'}
                 />
               )}
             </div>

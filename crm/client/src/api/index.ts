@@ -3,8 +3,8 @@ import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User } f
 
 // Auth
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<{ user: User }>('/auth/login', { email, password }),
+  login: (email: string, password: string, rememberMe = false) =>
+    api.post<{ user: User }>('/auth/login', { email, password, rememberMe }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get<User>('/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
@@ -27,6 +27,7 @@ export const contactsApi = {
   create: (data: Partial<Contact>) => api.post<Contact>('/api/contacts', data),
   update: (id: string, data: Partial<Contact>) => api.put<Contact>(`/api/contacts/${id}`, data),
   delete: (id: string) => api.delete(`/api/contacts/${id}`),
+  import: (contacts: any[]) => api.post<{ created: number; skipped: number; errors: string[] }>('/api/contacts/import', { contacts }),
   getInteractions: (id: string) => api.get<Interaction[]>(`/api/contacts/${id}/interactions`),
   getInitiatives: (id: string) => api.get<any[]>(`/api/contacts/${id}/initiatives`),
   getTasks: (id: string) => api.get<Task[]>(`/api/contacts/${id}/tasks`),
@@ -130,4 +131,13 @@ export const gmailApi = {
   getAuthUrl: () => `/auth/gmail`,
   search: (q: string) => api.get('/api/gmail/search', { params: { q } }),
   getThread: (id: string) => api.get(`/api/gmail/thread/${id}`),
+  // Sync
+  status: () => api.get<{ connected: boolean; enabled: boolean; syncIntervalMinutes: number; lastSyncAt: string | null; pendingCount: number }>('/api/gmail/status'),
+  getSettings: () => api.get<{ enabled: boolean; syncIntervalMinutes: number; lastSyncAt: string | null }>('/api/gmail/settings'),
+  updateSettings: (data: { enabled: boolean; syncIntervalMinutes: number }) => api.put('/api/gmail/settings', data),
+  triggerSync: () => api.post<{ message: string; added: number }>('/api/gmail/sync'),
+  pending: (status = 'pending') => api.get<any[]>('/api/gmail/pending', { params: { status } }),
+  approve: (id: string) => api.post(`/api/gmail/pending/${id}/approve`),
+  dismiss: (id: string) => api.post(`/api/gmail/pending/${id}/dismiss`),
+  disconnect: () => api.delete('/api/gmail/disconnect'),
 };

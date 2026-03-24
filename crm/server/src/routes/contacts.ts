@@ -6,6 +6,7 @@ import {
   createContact,
   updateContact,
   deleteContact,
+  importContacts,
   getContactInteractions,
   getContactInitiatives,
   getContactTasks,
@@ -17,6 +18,7 @@ router.use(requireAuth);
 
 router.get('/', getContacts);
 router.post('/', requireEditor, createContact);
+router.post('/import', requireEditor, importContacts);
 router.get('/:id', getContact);
 router.put('/:id', requireEditor, updateContact);
 router.delete('/:id', requireAdmin, deleteContact);

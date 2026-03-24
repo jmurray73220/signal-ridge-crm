@@ -9,6 +9,7 @@ import { entitiesApi, tasksApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { EntityModal } from '../components/EntityModal';
+import { ContactModal } from '../components/ContactModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
 import toast from 'react-hot-toast';
@@ -39,6 +40,7 @@ export function EntityDetail() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('people');
   const [showEdit, setShowEdit] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
   const [showLogInteraction, setShowLogInteraction] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -105,7 +107,21 @@ export function EntityDetail() {
             {/* Type-specific metadata */}
             {entity.entityType === 'CongressionalOffice' && (
               <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2">
-                {entity.memberName && <div><span className="text-xs" style={{ color: '#8b949e' }}>Member: </span><span className="text-sm" style={{ color: '#e6edf3' }}>{entity.memberName}</span></div>}
+                {entity.memberName && (() => {
+                  const mn = entity.memberName as string;
+                  const isCommittee = mn.includes(' | Ranking: ');
+                  if (isCommittee) {
+                    const [chair, ranking] = mn.split(' | Ranking: ');
+                    return (
+                      <>
+                        {chair && <div><span className="text-xs" style={{ color: '#8b949e' }}>Chair: </span><span className="text-sm" style={{ color: '#e6edf3' }}>{chair}</span></div>}
+                        {ranking && <div><span className="text-xs" style={{ color: '#8b949e' }}>Ranking Member: </span><span className="text-sm" style={{ color: '#e6edf3' }}>{ranking}</span></div>}
+                      </>
+                    );
+                  }
+                  const label = entity.name.toLowerCase().includes('committee') ? 'Chair' : 'Member';
+                  return <div><span className="text-xs" style={{ color: '#8b949e' }}>{label}: </span><span className="text-sm" style={{ color: '#e6edf3' }}>{mn}</span></div>;
+                })()}
                 {entity.state && <div><span className="text-xs" style={{ color: '#8b949e' }}>State: </span><span className="text-sm" style={{ color: '#e6edf3' }}>{entity.state}{entity.district ? ` — ${entity.district}` : ''}</span></div>}
                 {entity.party && (
                   <div><span className="text-xs" style={{ color: '#8b949e' }}>Party: </span>
@@ -239,9 +255,9 @@ export function EntityDetail() {
         <div>
           {user?.role !== 'Viewer' && (
             <div className="flex justify-end mb-3">
-              <Link to={`/contacts?entity=${id}`} className="btn-secondary flex items-center gap-1.5 text-sm">
+              <button onClick={() => setShowAddContact(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
                 <Plus size={14} /> Add Contact
-              </Link>
+              </button>
             </div>
           )}
           {contacts.length === 0 ? (
@@ -270,7 +286,9 @@ export function EntityDetail() {
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>
-                          {contact.rank && <span className="font-medium">{contact.rank} </span>}{contact.title}
+                          {contact.rank && !entity.name.toLowerCase().includes('committee') && <span className="font-medium">{contact.rank} </span>}
+                          {contact.title}
+                          {contact.rank && entity.name.toLowerCase().includes('committee') && <span className="text-xs ml-1" style={{ color: '#8b949e' }}>({contact.rank})</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
@@ -422,6 +440,19 @@ export function EntityDetail() {
       )}
 
       {/* Modals */}
+      {showAddContact && (
+        <ContactModal
+          defaultEntityId={id}
+          onClose={() => setShowAddContact(false)}
+          onSave={() => {
+            setShowAddContact(false);
+            qc.invalidateQueries({ queryKey: ['entity', id] });
+            qc.invalidateQueries({ queryKey: ['contacts'] });
+            toast.success('Contact created');
+          }}
+        />
+      )}
+
       {showEdit && (
         <EntityModal
           entity={entity as Entity}

@@ -3,9 +3,12 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+const REMEMBER_ME_KEY = 'srm_remember_email';
+
 export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, user } = useAuth();
   const navigate = useNavigate();
@@ -22,11 +25,25 @@ export function Login() {
     }
   }, [expired]);
 
+  // Pre-fill email from localStorage if previously remembered
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBER_ME_KEY);
+    if (saved) {
+      setEmail(saved);
+      setRememberMe(true);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const loggedInUser = await login(email, password);
+      const loggedInUser = await login(email, password, rememberMe);
+      if (rememberMe) {
+        localStorage.setItem(REMEMBER_ME_KEY, email);
+      } else {
+        localStorage.removeItem(REMEMBER_ME_KEY);
+      }
       if (loggedInUser.mustChangePassword) {
         navigate('/change-password', { replace: true });
       } else {
@@ -93,6 +110,18 @@ export function Login() {
                 placeholder="••••••••"
                 required
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                style={{ accentColor: '#c9a84c', width: 14, height: 14, cursor: 'pointer' }}
+              />
+              <label htmlFor="rememberMe" className="text-sm cursor-pointer" style={{ color: '#8b949e' }}>
+                Remember me for 30 days
+              </label>
             </div>
             <button
               type="submit"

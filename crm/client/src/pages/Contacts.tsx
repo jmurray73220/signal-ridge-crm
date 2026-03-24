@@ -1,12 +1,29 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Download, ChevronRight, User } from 'lucide-react';
+import { Plus, Search, Download, Upload, ChevronRight, User } from 'lucide-react';
 import { contactsApi, exportApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { ContactModal } from '../components/ContactModal';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+
+const CSV_TEMPLATE = `firstName,lastName,rank,title,email,officePhone,cell,linkedIn,bio,tags,organizationName,chamber,subcommittee
+John,Smith,COL,Legislative Director,john@example.com,202-555-0100,202-555-0101,,,Decision Maker,Sen. Tim Kaine (D-VA),,
+Jane,Doe,,Staff Director,jane@example.com,202-555-0200,,,,Hill Staffer,Senate Armed Services Committee,Senate,ISO
+`;
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = values[i] || ''; });
+    return row;
+  });
+}
 
 function formatDate(d?: string | null) {
   if (!d) return '—';
@@ -18,6 +35,8 @@ export function Contacts() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ['contacts'],
@@ -50,6 +69,42 @@ export function Contacts() {
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'contacts_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length === 0) {
+        toast.error('No data rows found in CSV');
+        return;
+      }
+      const res = await contactsApi.import(rows);
+      const data = res.data;
+      toast.success(`Imported ${data.created} contact(s)${data.skipped ? `, ${data.skipped} skipped` : ''}`);
+      if (data.errors.length > 0) {
+        data.errors.slice(0, 3).forEach(err => toast.error(err));
+      }
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+    } catch {
+      toast.error('Import failed');
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -62,9 +117,30 @@ export function Contacts() {
             <Download size={14} /> Export CSV
           </button>
           {user?.role !== 'Viewer' && (
-            <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-1.5 text-sm">
-              <Plus size={14} /> Add Contact
-            </button>
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={importing}
+                  className="btn-secondary flex items-center gap-1.5 text-sm"
+                >
+                  <Upload size={14} /> {importing ? 'Importing…' : 'Import CSV'}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+              </div>
+              <button onClick={handleDownloadTemplate} className="btn-secondary flex items-center gap-1.5 text-sm" title="Download import template">
+                <Download size={14} /> Template
+              </button>
+              <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-1.5 text-sm">
+                <Plus size={14} /> Add Contact
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -121,10 +197,15 @@ export function Contacts() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm" style={{ color: '#e6edf3' }}>
-                      {contact.rank && <span className="font-medium">{contact.rank} </span>}
-                      {contact.title}
-                    </div>
+                    {(() => {
+                      const isCommittee = contact.entity?.name?.toLowerCase().includes('committee');
+                      return (
+                        <div className="text-sm" style={{ color: '#e6edf3' }}>
+                          {contact.rank && !isCommittee && <span className="font-medium">{contact.rank} </span>}
+                          {contact.title}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {contact.entity ? (
@@ -133,13 +214,14 @@ export function Contacts() {
                           entityType={contact.entity.entityType}
                           chamber={contact.entity.chamber}
                           governmentType={contact.entity.governmentType}
+                          showAsHill={contact.entity.entityType === 'CongressionalOffice'}
                         />
                         <Link
                           to={`/entities/${contact.entity.id}`}
                           className="text-sm hover:text-accent transition-colors"
                           style={{ color: '#8b949e', textDecoration: 'none' }}
                         >
-                          {contact.entity.name}
+                          {contact.entity.name}{contact.rank && contact.entity.name?.toLowerCase().includes('committee') ? `/${contact.rank}` : ''}
                         </Link>
                       </div>
                     ) : (
