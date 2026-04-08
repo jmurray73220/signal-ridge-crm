@@ -10,6 +10,7 @@ import {
   removeInitiativeContact,
   addInitiativeEntity,
   removeInitiativeEntity,
+  reorderInitiativeContacts,
 } from '../controllers/initiativesController';
 
 const router = Router();
@@ -23,6 +24,7 @@ router.put('/:id', requireEditor, updateInitiative);
 router.delete('/:id', requireAdmin, deleteInitiative);
 router.post('/:id/contacts', requireEditor, addInitiativeContact);
 router.delete('/:id/contacts/:contactId', requireEditor, removeInitiativeContact);
+router.put('/:id/contacts/reorder', requireEditor, reorderInitiativeContacts);
 router.post('/:id/entities', requireEditor, addInitiativeEntity);
 router.delete('/:id/entities/:entityId', requireEditor, removeInitiativeEntity);
 

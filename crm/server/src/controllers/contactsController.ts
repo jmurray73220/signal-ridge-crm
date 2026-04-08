@@ -24,7 +24,7 @@ export async function getContacts(req: AuthRequest, res: Response) {
     const contacts = await prisma.contact.findMany({
       where,
       include: {
-        entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } },
+        entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true, party: true, committee: true, subcommittee: true } },
         interactions: {
           include: { interaction: { select: { date: true } } },
           orderBy: { interaction: { date: 'desc' } },
@@ -103,7 +103,7 @@ export async function getContact(req: AuthRequest, res: Response) {
 }
 
 export async function createContact(req: AuthRequest, res: Response) {
-  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, bio, tags, entityId } = req.body;
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, entityId } = req.body;
 
   if (!firstName || !lastName) {
     return res.status(400).json({ error: 'First and last name required' });
@@ -120,6 +120,7 @@ export async function createContact(req: AuthRequest, res: Response) {
         officePhone: officePhone || null,
         cell: cell || null,
         linkedIn: linkedIn || null,
+        website: website || null,
         bio: bio || null,
         tags: JSON.stringify(tags || []),
         entityId: entityId || null,
@@ -136,7 +137,7 @@ export async function createContact(req: AuthRequest, res: Response) {
 
 export async function updateContact(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, bio, tags, entityId } = req.body;
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, entityId } = req.body;
 
   try {
     const contact = await prisma.contact.update({
@@ -150,6 +151,7 @@ export async function updateContact(req: AuthRequest, res: Response) {
         officePhone: officePhone !== undefined ? officePhone : undefined,
         cell: cell !== undefined ? cell : undefined,
         linkedIn: linkedIn !== undefined ? linkedIn : undefined,
+        website: website !== undefined ? website : undefined,
         bio: bio !== undefined ? bio : undefined,
         ...(tags !== undefined && { tags: JSON.stringify(tags) }),
         entityId: entityId !== undefined ? entityId : undefined,

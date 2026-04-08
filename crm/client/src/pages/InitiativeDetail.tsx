@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Edit2, Trash2, MessageSquare, Users,
-  Building2, CheckSquare, Plus, X, ExternalLink
+  Building2, CheckSquare, Plus, X, ExternalLink, GripVertical
 } from 'lucide-react';
-import { initiativesApi, contactsApi, entitiesApi, tasksApi } from '../api';
+import { initiativesApi, contactsApi, entitiesApi, tasksApi, settingsApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { InitiativeModal } from '../components/InitiativeModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
+import { InitiativeContactsTab } from '../components/InitiativeContactsTab';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -60,7 +61,6 @@ export function InitiativeDetail() {
   const { data: allContacts = [] } = useQuery({
     queryKey: ['contacts'],
     queryFn: () => contactsApi.list().then(r => r.data),
-    enabled: showAddContact,
   });
 
   const { data: allEntities = [] } = useQuery({
@@ -127,10 +127,45 @@ export function InitiativeDetail() {
   if (error || !initiative) return <div className="p-8 text-center text-sm" style={{ color: '#da3633' }}>Initiative not found.</div>;
 
   const i = initiative as any;
-  const contacts = i.contacts || [];
+  const directContacts = i.contacts || [];
   const entities = i.entities || [];
   const interactions = i.interactions || [];
   const tasks = i.tasks || [];
+
+  // Find contacts tagged with this initiative's title but not already linked
+  const initiativeTitle = (i.title || '').toLowerCase();
+  const taggedContactEntries = allContacts
+    .filter(c => {
+      // Not already a direct contact
+      if (directContacts.some((ic: any) => ic.contactId === c.id)) return false;
+      // Has a tag matching the initiative title
+      return (c.tags || []).some((t: string) => t.toLowerCase() === initiativeTitle);
+    })
+    .map(c => ({
+      contactId: c.id,
+      role: 'Tagged',
+      sortOrder: 999,
+      contact: {
+        id: c.id,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        title: c.title,
+        rank: c.rank,
+        tags: JSON.stringify(c.tags || []),
+        entity: c.entity ? {
+          id: c.entity.id,
+          name: c.entity.name,
+          entityType: c.entity.entityType,
+          chamber: c.entity.chamber,
+          party: (c.entity as any).party,
+          committee: (c.entity as any).committee,
+          subcommittee: (c.entity as any).subcommittee,
+          governmentType: c.entity.governmentType,
+        } : undefined,
+      },
+    }));
+
+  const contacts = [...directContacts, ...taggedContactEntries];
 
   const filteredContactSearch = allContacts.filter(c => {
     const already = contacts.find((ic: any) => ic.contactId === c.id);
@@ -230,96 +265,25 @@ export function InitiativeDetail() {
 
       {/* Contacts Tab */}
       {tab === 'contacts' && (
-        <div>
-          {user?.role !== 'Viewer' && (
-            <div className="flex justify-end mb-3">
-              <button onClick={() => setShowAddContact(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                <Plus size={14} /> Add Contact
-              </button>
-            </div>
-          )}
-
-          {showAddContact && (
-            <div className="card mb-4">
-              <h3 className="text-sm font-medium mb-3" style={{ color: '#e6edf3' }}>Add Contact to Initiative</h3>
-              <input
-                className="input mb-2"
-                placeholder="Search contacts…"
-                value={contactSearch}
-                onChange={e => setContactSearch(e.target.value)}
-              />
-              <div className="max-h-40 overflow-y-auto rounded border mb-3" style={{ borderColor: '#30363d' }}>
-                {filteredContactSearch.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => setAddContactId(c.id)}
-                    className="w-full text-left px-3 py-2 hover:bg-bg transition-colors flex items-center gap-2"
-                    style={{ background: addContactId === c.id ? 'rgba(201,168,76,0.1)' : 'transparent' }}
-                  >
-                    <span className="text-sm" style={{ color: '#e6edf3' }}>
-                      {c.rank && `${c.rank} `}{c.firstName} {c.lastName}
-                    </span>
-                    {c.title && <span className="text-xs" style={{ color: '#8b949e' }}>{c.title}</span>}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-3">
-                <select className="input flex-1" value={addContactRole} onChange={e => setAddContactRole(e.target.value)}>
-                  <option value="">— No role —</option>
-                  {CONTACT_ROLES.map(r => <option key={r}>{r}</option>)}
-                </select>
-                <button
-                  onClick={() => addContact.mutate()}
-                  disabled={!addContactId || addContact.isPending}
-                  className="btn-primary"
-                >
-                  Add
-                </button>
-                <button onClick={() => { setShowAddContact(false); setAddContactId(''); }} className="btn-secondary">Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {contacts.length === 0 ? (
-            <div className="card text-center py-10">
-              <Users size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No contacts associated with this initiative.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {contacts.map((ic: any) => (
-                <div key={ic.contactId} className="card flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div>
-                      <Link to={`/contacts/${ic.contactId}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
-                        {ic.contact.rank && `${ic.contact.rank} `}{ic.contact.firstName} {ic.contact.lastName}
-                      </Link>
-                      {ic.contact.title && <div className="text-xs" style={{ color: '#8b949e' }}>{ic.contact.title}</div>}
-                      {ic.contact.entity && (
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <EntityTypeBadge entityType={ic.contact.entity.entityType} chamber={ic.contact.entity.chamber} governmentType={ic.contact.entity.governmentType} />
-                          <Link to={`/entities/${ic.contact.entity.id}`} className="text-xs" style={{ color: '#8b949e', textDecoration: 'none' }}>{ic.contact.entity.name}</Link>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {ic.role && (
-                      <span className="badge" style={{ background: 'rgba(201,168,76,0.1)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)' }}>
-                        {ic.role}
-                      </span>
-                    )}
-                    {user?.role !== 'Viewer' && (
-                      <button onClick={() => removeContact.mutate(ic.contactId)} className="text-xs hover:opacity-80" style={{ color: '#da3633' }}>
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <InitiativeContactsTab
+          contacts={contacts}
+          initiativeId={id!}
+          canEdit={user?.role !== 'Viewer'}
+          canDelete={user?.role !== 'Viewer'}
+          onShowAddContact={() => setShowAddContact(true)}
+          showAddContact={showAddContact}
+          contactSearch={contactSearch}
+          onContactSearchChange={setContactSearch}
+          filteredContactSearch={filteredContactSearch}
+          addContactId={addContactId}
+          onAddContactIdChange={setAddContactId}
+          addContactRole={addContactRole}
+          onAddContactRoleChange={setAddContactRole}
+          onAddContact={() => addContact.mutate()}
+          addContactPending={addContact.isPending}
+          onCancelAdd={() => { setShowAddContact(false); setAddContactId(''); }}
+          onRemoveContact={(cId: string) => removeContact.mutate(cId)}
+        />
       )}
 
       {/* Organizations Tab */}

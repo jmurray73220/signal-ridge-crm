@@ -15,6 +15,9 @@ import exportRoutes from './routes/exportRoutes';
 import briefingRoutes from './routes/briefing';
 import gmailRoutes from './routes/gmail';
 import usersRoutes from './routes/users';
+import budgetRoutes from './routes/budgets';
+import reportTemplateRoutes from './routes/reportTemplates';
+import settingsRoutes from './routes/settings';
 import { errorHandler } from './middleware/errorHandler';
 import { startBackgroundSync } from './services/gmail';
 
@@ -28,7 +31,7 @@ app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:3000'],
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 
 // Routes
@@ -43,6 +46,9 @@ app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/briefing', briefingRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/budgets', budgetRoutes);
+app.use('/api/report-templates', reportTemplateRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Gmail routes (mixed auth/api prefix — handled internally in the router)
 app.use('/', gmailRoutes);

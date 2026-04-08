@@ -1,5 +1,5 @@
 import api from './client';
-import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User } from '../types';
+import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User, BudgetDocument, BudgetConversation, ReportTemplate, BudgetLink } from '../types';
 
 // Auth
 export const authApi = {
@@ -59,6 +59,8 @@ export const initiativesApi = {
     api.post(`/api/initiatives/${id}/contacts`, { contactId, role }),
   removeContact: (id: string, contactId: string) =>
     api.delete(`/api/initiatives/${id}/contacts/${contactId}`),
+  reorderContacts: (id: string, order: { contactId: string; sortOrder: number }[]) =>
+    api.put(`/api/initiatives/${id}/contacts/reorder`, { order }),
   addEntity: (id: string, entityId: string, relationshipNote?: string) =>
     api.post(`/api/initiatives/${id}/entities`, { entityId, relationshipNote }),
   removeEntity: (id: string, entityId: string) =>
@@ -124,6 +126,59 @@ export const exportApi = {
 export const briefingApi = {
   entity: (id: string) => api.get<{ briefing: string }>(`/api/briefing/entity/${id}`),
   contact: (id: string) => api.get<{ briefing: string }>(`/api/briefing/contact/${id}`),
+  exportDocx: (briefingMarkdown: string, filename?: string) =>
+    api.post('/api/briefing/export-docx', { briefingMarkdown, filename }, { responseType: 'blob', timeout: 30000 }),
+  clientMeeting: (data: {
+    clientId: string;
+    officeId: string;
+    meetingDate: string;
+    meetingTime?: string;
+    meetingLocation?: string;
+    stafferContactId?: string;
+    primaryAsk?: string;
+    rationale?: string;
+    talkingPointsPrompt?: string;
+    additionalContext?: string;
+  }) => api.post<{ briefing: string }>('/api/briefing/client-meeting', data, { timeout: 120000 }),
+};
+
+// CRM Settings
+export const settingsApi = {
+  get: () => api.get<{ majorityParty: string; hasLogo: boolean }>('/api/settings'),
+  update: (data: { majorityParty?: string }) => api.put('/api/settings', data),
+  uploadLogo: (formData: FormData) => api.post('/api/settings/logo', formData),
+  deleteLogo: () => api.delete('/api/settings/logo'),
+  logoUrl: '/api/settings/logo',
+};
+
+// Budget Intelligence
+export const budgetApi = {
+  list: () => api.get<BudgetDocument[]>('/api/budgets'),
+  upload: (formData: FormData) =>
+    api.post<BudgetDocument>('/api/budgets/upload', formData),
+  delete: (id: string) => api.delete(`/api/budgets/${id}`),
+  chat: (id: string, message: string, conversationHistory: any[], companyId?: string) =>
+    api.post<{ response: string }>(`/api/budgets/${id}/chat`, { message, conversationHistory, companyId }),
+  generateReport: (data: { documentId?: string; documentIds?: string[]; companyId: string; reportTemplateId?: string }) =>
+    api.post('/api/budgets/report', data, { responseType: 'blob', timeout: 120000 }),
+  // Conversations
+  getConversations: (documentId?: string) =>
+    api.get<BudgetConversation[]>('/api/budgets/conversations', { params: documentId ? { documentId } : {} }),
+  createConversation: (data: { budgetDocumentId: string; messages?: any[] }) =>
+    api.post<BudgetConversation>('/api/budgets/conversations', data),
+  updateConversation: (id: string, messages: any[]) =>
+    api.put<BudgetConversation>(`/api/budgets/conversations/${id}`, { messages }),
+  // Links
+  createLink: (data: { conversationId: string; entityType: string; entityId: string; note?: string }) =>
+    api.post<BudgetLink>('/api/budgets/links', data),
+};
+
+// Report Templates
+export const reportTemplateApi = {
+  list: () => api.get<ReportTemplate[]>('/api/report-templates'),
+  upload: (formData: FormData) =>
+    api.post<ReportTemplate>('/api/report-templates/upload', formData),
+  delete: (id: string) => api.delete(`/api/report-templates/${id}`),
 };
 
 // Gmail
@@ -139,5 +194,9 @@ export const gmailApi = {
   pending: (status = 'pending') => api.get<any[]>('/api/gmail/pending', { params: { status } }),
   approve: (id: string) => api.post(`/api/gmail/pending/${id}/approve`),
   dismiss: (id: string) => api.post(`/api/gmail/pending/${id}/dismiss`),
+  updatePendingContacts: (id: string, contactIds: string[]) => api.patch(`/api/gmail/pending/${id}/contacts`, { contactIds }),
+  rematchContacts: () => api.post<{ message: string; updated: number }>('/api/gmail/rematch-contacts'),
+  resummarize: () => api.post<{ message: string; updated: number; failed: number }>('/api/gmail/resummarize'),
+  resummarizePending: () => api.post<{ message: string; updated: number; failed: number }>('/api/gmail/resummarize-pending'),
   disconnect: () => api.delete('/api/gmail/disconnect'),
 };

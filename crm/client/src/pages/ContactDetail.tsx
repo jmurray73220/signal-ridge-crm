@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Phone, Smartphone, Mail, Linkedin, ArrowLeft, Edit2, Trash2,
-  MessageSquare, Target, CheckSquare, Sparkles, Plus
+  Phone, Smartphone, Mail, Linkedin, ExternalLink, ArrowLeft, Edit2, Trash2,
+  MessageSquare, Target, CheckSquare, Sparkles, Plus, Copy
 } from 'lucide-react';
 import { contactsApi, tasksApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
@@ -13,6 +13,23 @@ import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+
+function CopyEmailButton({ email }: { email: string }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(email);
+        toast.success('Email copied');
+      }}
+      className="p-0.5 hover:opacity-80 transition-opacity"
+      style={{ color: '#8b949e' }}
+      title="Copy email"
+    >
+      <Copy size={13} />
+    </button>
+  );
+}
 
 function formatDate(d?: string | null) {
   if (!d) return '—';
@@ -120,9 +137,12 @@ export function ContactDetail() {
             {/* Contact info */}
             <div className="flex flex-wrap gap-4 mt-4">
               {contact.email && (
-                <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-sm" style={{ color: '#8b949e', textDecoration: 'none' }}>
-                  <Mail size={14} /> {contact.email}
-                </a>
+                <div className="flex items-center gap-1.5">
+                  <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-sm" style={{ color: '#8b949e', textDecoration: 'none' }}>
+                    <Mail size={14} /> {contact.email}
+                  </a>
+                  <CopyEmailButton email={contact.email} />
+                </div>
               )}
               {contact.officePhone && (
                 <a href={`tel:${contact.officePhone}`} className="flex items-center gap-1.5 text-sm" style={{ color: '#8b949e', textDecoration: 'none' }}>
@@ -137,6 +157,11 @@ export function ContactDetail() {
               {contact.linkedIn && (
                 <a href={contact.linkedIn} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm" style={{ color: '#8b949e', textDecoration: 'none' }}>
                   <Linkedin size={14} /> LinkedIn
+                </a>
+              )}
+              {contact.website && (
+                <a href={contact.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+                  <ExternalLink size={14} /> {contact.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                 </a>
               )}
             </div>

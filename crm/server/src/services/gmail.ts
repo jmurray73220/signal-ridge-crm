@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
 
 const prisma = new PrismaClient();
 
@@ -52,7 +53,7 @@ export async function isGmailConnected(): Promise<boolean> {
 }
 
 // Returns a fresh access token, refreshing via refresh_token if needed
-async function getValidAccessToken(): Promise<string | null> {
+export async function getValidAccessToken(): Promise<string | null> {
   const cred = await prisma.gmailCredential.findUnique({ where: { id: 'singleton' } });
   if (!cred) return null;
 
@@ -127,15 +128,16 @@ export async function runGmailSync(): Promise<{ added: number }> {
 
   // Get sync settings to find the lastSyncAt window
   const settings = await prisma.gmailSyncSettings.findUnique({ where: { id: 'singleton' } });
-  const since = settings?.lastSyncAt ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // default: last 7 days
+  const since = settings?.lastSyncAt ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // default: last 90 days
   const afterEpoch = Math.floor(since.getTime() / 1000);
 
-  // Fetch all contacts with email addresses
-  const contacts = await prisma.contact.findMany({
-    where: { email: { not: null } },
-    select: { id: true, email: true, entityId: true },
+  // Fetch all contacts (including those without email, for name-based matching)
+  const allContactsForMatching = await prisma.contact.findMany({
+    select: { id: true, email: true, entityId: true, firstName: true, lastName: true },
   });
-  if (contacts.length === 0) {
+  // Contacts with emails for Gmail search
+  const contacts = allContactsForMatching.filter(c => c.email);
+  if (contacts.length === 0 && allContactsForMatching.length === 0) {
     await prisma.gmailSyncSettings.upsert({
       where: { id: 'singleton' },
       create: { id: 'singleton', lastSyncAt: new Date() },
@@ -144,22 +146,35 @@ export async function runGmailSync(): Promise<{ added: number }> {
     return { added: 0 };
   }
 
-  // Build a search query: emails from any known contact since lastSync
-  const emailList = contacts.map(c => c.email!).slice(0, 20); // Gmail OR limit
-  const query = `(${emailList.map(e => `from:${e}`).join(' OR ')}) after:${afterEpoch}`;
-
-  let threads: any[] = [];
-  try {
-    const response = await gmail.users.threads.list({
-      userId: 'me',
-      q: query,
-      maxResults: 50,
-    });
-    threads = response.data.threads ?? [];
-  } catch (err) {
-    console.error('Gmail sync list error:', err);
-    return { added: 0 };
+  // Batch contacts into groups of 15 to stay within Gmail query limits
+  const allEmails = contacts.map(c => c.email!);
+  const batchSize = 15;
+  const batches: string[][] = [];
+  for (let i = 0; i < allEmails.length; i += batchSize) {
+    batches.push(allEmails.slice(i, i + batchSize));
   }
+
+  // Search both from: and to: for each batch, collect all unique threads
+  const threadMap = new Map<string, any>();
+  for (const batch of batches) {
+    const fromTo = batch.map(e => `from:${e} OR to:${e}`).join(' OR ');
+    const query = `(${fromTo}) after:${afterEpoch} -subject:"Accepted:" -subject:"Declined:" -subject:"Tentatively accepted:" -subject:"Updated invitation:" -subject:"Canceled event:" -subject:"Invitation:"  -filename:ics`;
+
+    try {
+      const response = await gmail.users.threads.list({
+        userId: 'me',
+        q: query,
+        maxResults: 50,
+      });
+      for (const t of (response.data.threads ?? [])) {
+        if (t.id && !threadMap.has(t.id)) threadMap.set(t.id, t);
+      }
+    } catch (err) {
+      console.error('Gmail sync batch error:', err);
+    }
+  }
+
+  const threads = Array.from(threadMap.values());
 
   let added = 0;
 
@@ -170,11 +185,10 @@ export async function runGmailSync(): Promise<{ added: number }> {
     const exists = await prisma.gmailPendingEmail.findUnique({ where: { threadId: thread.id } });
     if (exists) continue;
 
-    // Fetch thread details
+    // Fetch full thread for headers + body
     let threadData: any;
     try {
-      const r = await gmail.users.threads.get({ userId: 'me', id: thread.id, format: 'metadata',
-        metadataHeaders: ['From', 'Subject', 'Date'] });
+      const r = await gmail.users.threads.get({ userId: 'me', id: thread.id, format: 'full' });
       threadData = r.data;
     } catch {
       continue;
@@ -185,23 +199,70 @@ export async function runGmailSync(): Promise<{ added: number }> {
 
     const headers = firstMsg.payload?.headers ?? [];
     const from = parseHeader(headers, 'From');
+    const to = parseHeader(headers, 'To');
+    const cc = parseHeader(headers, 'Cc');
     const subject = parseHeader(headers, 'Subject') || '(no subject)';
     const dateStr = parseHeader(headers, 'Date');
-    const snippet = firstMsg.snippet ?? '';
     const emailDate = dateStr ? new Date(dateStr) : new Date();
 
-    // Match to a contact by email address in the From header
-    const matchedContact = contacts.find(c => c.email && from.includes(c.email));
+    // Extract full text body from all messages
+    const bodies: string[] = [];
+    for (const msg of threadData.messages ?? []) {
+      const parts = msg.payload?.parts ?? [msg.payload];
+      for (const part of (parts ?? [])) {
+        if (part?.mimeType === 'text/plain' && part?.body?.data) {
+          bodies.push(Buffer.from(part.body.data, 'base64url').toString('utf-8'));
+        }
+      }
+    }
+    const fullBody = bodies.join('\n\n---\n\n');
+    const fallbackSnippet = firstMsg.snippet ?? '';
+
+    // Summarize with Claude
+    let summary = fallbackSnippet;
+    if (fullBody && process.env.ANTHROPIC_API_KEY) {
+      try {
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const response = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 500,
+          messages: [{
+            role: 'user',
+            content: `Summarize this email thread concisely for a CRM interaction log. Focus on: who said what, any action items, decisions made, or next steps. Keep it to 2-4 sentences. Do not include greetings, signatures, or boilerplate.\n\nSubject: ${subject}\nFrom: ${from}\n\n${fullBody.slice(0, 8000)}`,
+          }],
+        });
+        const block = response.content[0];
+        if (block.type === 'text') summary = block.text;
+      } catch (err) {
+        console.error('Claude summary failed during sync:', err);
+      }
+    }
+
+    // Match contacts by email address AND by name in From, To, or CC headers
+    const allHeaders = `${from} ${to} ${cc}`;
+    const allHeadersLower = allHeaders.toLowerCase();
+    const matchedContacts = allContactsForMatching.filter(c => {
+      // Match by email address
+      if (c.email && allHeaders.includes(c.email)) return true;
+      // Match by full name in header display names (e.g., "John Smith <john@senate.gov>")
+      if (c.firstName && c.lastName) {
+        const fullName = `${c.firstName} ${c.lastName}`.toLowerCase();
+        if (fullName.length > 3 && allHeadersLower.includes(fullName)) return true;
+      }
+      return false;
+    });
+    const primaryContact = matchedContacts[0] ?? null;
 
     await prisma.gmailPendingEmail.create({
       data: {
         threadId: thread.id,
         subject,
         from,
-        snippet,
+        snippet: summary,
         emailDate,
-        contactId: matchedContact?.id ?? null,
-        entityId: matchedContact?.entityId ?? null,
+        contactId: primaryContact?.id ?? null,
+        entityId: primaryContact?.entityId ?? null,
+        matchedContactIds: JSON.stringify(matchedContacts.map(c => c.id)),
         status: 'pending',
       },
     });

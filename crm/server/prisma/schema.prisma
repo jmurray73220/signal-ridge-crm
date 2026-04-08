@@ -50,6 +50,7 @@ model Contact {
   officePhone String?
   cell        String?
   linkedIn    String?
+  website     String?
   bio         String?
   tags        String  @default("[]") // JSON array stored as string in SQLite
   entityId    String?
@@ -96,8 +97,9 @@ model Entity {
   budgetLineItem String?
 
   // Company fields
-  industry         String?
-  contractVehicles String? @default("[]") // JSON array
+  industry              String?
+  contractVehicles      String? @default("[]") // JSON array
+  capabilityDescription String?
 
   // Audit trail
   createdByUserId String?
@@ -148,6 +150,7 @@ model InitiativeContact {
   initiativeId String
   contactId    String
   role         String?
+  sortOrder    Int     @default(0)
 
   initiative Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   contact    Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -251,6 +254,17 @@ model Reminder {
   updatedAt DateTime @updatedAt
 }
 
+// ─── CRM Settings ────────────────────────────────────────────────────────────
+
+model CrmSettings {
+  id              String  @id @default("singleton")
+  majorityParty   String  @default("Republican") // Republican | Democrat
+  logoData        String? // Base64-encoded logo image
+  logoMimeType    String? // e.g., image/png
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // ─── Gmail Sync ───────────────────────────────────────────────────────────────
 
 model GmailCredential {
@@ -273,17 +287,60 @@ model GmailSyncSettings {
 }
 
 model GmailPendingEmail {
-  id        String   @id @default(uuid())
-  threadId  String   @unique
-  subject   String
-  from      String
-  snippet   String?
-  emailDate DateTime
-  status    String   @default("pending") // pending | approved | dismissed
-  contactId String?
-  contact   Contact? @relation(fields: [contactId], references: [id])
-  entityId  String?
-  entity    Entity?  @relation(fields: [entityId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(uuid())
+  threadId          String   @unique
+  subject           String
+  from              String
+  snippet           String?
+  emailDate         DateTime
+  status            String   @default("pending") // pending | approved | dismissed
+  contactId         String?
+  contact           Contact? @relation(fields: [contactId], references: [id])
+  entityId          String?
+  entity            Entity?  @relation(fields: [entityId], references: [id])
+  matchedContactIds String   @default("[]") // JSON array of all matched contact IDs
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ─── Budget Intelligence ─────────────────────────────────────────────────────
+
+model BudgetDocument {
+  id            String   @id @default(uuid())
+  name          String?
+  documentType  String   // J-Book, NDAA, Appropriations Bill, etc.
+  fiscalYear    String
+  serviceBranch String   // Army, Navy, Air Force, Space Force, Defense-Wide, Congress, etc.
+  extractedText String   // Full text of the document
+  createdAt     DateTime @default(now())
+
+  conversations BudgetConversation[]
+}
+
+model BudgetConversation {
+  id               String   @id @default(uuid())
+  budgetDocumentId String
+  budgetDocument   BudgetDocument @relation(fields: [budgetDocumentId], references: [id], onDelete: Cascade)
+  messages         String   @default("[]") // JSON array of messages
+  createdAt        DateTime @default(now())
+
+  links BudgetLink[]
+}
+
+model BudgetLink {
+  id                   String   @id @default(uuid())
+  budgetConversationId String
+  budgetConversation   BudgetConversation @relation(fields: [budgetConversationId], references: [id], onDelete: Cascade)
+  entityType           String   // CongressionalOffice | GovernmentOrganization | Company
+  entityId             String
+  note                 String?
+  createdAt            DateTime @default(now())
+}
+
+model ReportTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  fileData    String   // Base64-encoded .docx file
+  createdAt   DateTime @default(now())
 }

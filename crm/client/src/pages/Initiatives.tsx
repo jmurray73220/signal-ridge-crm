@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, List, LayoutGrid, Target, ChevronRight } from 'lucide-react';
 import { initiativesApi } from '../api';
@@ -66,6 +66,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
 
 export function Initiatives() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [showModal, setShowModal] = useState(false);
@@ -174,7 +175,7 @@ export function Initiatives() {
             </thead>
             <tbody>
               {filtered.map(i => (
-                <tr key={i.id} className="table-row">
+                <tr key={i.id} className="table-row" onClick={() => navigate(`/initiatives/${i.id}`)}>
                   <td className="px-4 py-3">
                     <Link to={`/initiatives/${i.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
                       {i.title}

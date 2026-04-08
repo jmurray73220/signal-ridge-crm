@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { settingsApi } from '../api';
 import toast from 'react-hot-toast';
 
 const REMEMBER_ME_KEY = 'srm_remember_email';
@@ -14,6 +16,11 @@ export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const expired = searchParams.get('expired') === 'true';
+
+  const { data: crmSettings } = useQuery({
+    queryKey: ['crm-settings'],
+    queryFn: () => settingsApi.get().then(r => r.data),
+  });
 
   useEffect(() => {
     if (user) navigate('/', { replace: true });
@@ -65,12 +72,20 @@ export function Login() {
       <div className="w-full max-w-sm">
         {/* Logo / Branding */}
         <div className="text-center mb-8">
-          <div
-            className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl font-bold mx-auto mb-4"
-            style={{ background: '#c9a84c', color: '#0d1117' }}
-          >
-            SR
-          </div>
+          {crmSettings?.hasLogo ? (
+            <img
+              src={`${settingsApi.logoUrl}?v=1`}
+              alt="Signal Ridge"
+              className="h-16 object-contain mx-auto mb-4"
+            />
+          ) : (
+            <div
+              className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl font-bold mx-auto mb-4"
+              style={{ background: '#c9a84c', color: '#0d1117' }}
+            >
+              SR
+            </div>
+          )}
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: '#e6edf3' }}>
             Signal Ridge CRM
           </h1>

@@ -1,27 +1,111 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Plus } from 'lucide-react';
-import { contactsApi, entitiesApi } from '../api';
+import { X, Plus, Building2, Target } from 'lucide-react';
+import { contactsApi, entitiesApi, initiativesApi } from '../api';
 import { EntityModal } from './EntityModal';
 import type { Contact, EntityType } from '../types';
 import toast from 'react-hot-toast';
-
-const CONTACT_TAGS = [
-  'Hill Staffer', 'Member', 'Program Office', 'Contracting Officer', 'SES',
-  'Flag Officer', 'Decision Maker', 'Technical POC', 'BD Target', 'Champion',
-  'Gatekeeper', 'SITE 525'
-];
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   CongressionalOffice: 'Congressional Office',
   GovernmentOrganization: 'Government Organization',
   Company: 'Company',
   Client: 'Client',
-  NGO: 'NGO',
   Other: 'Other',
 };
 
-const ALL_ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'NGO', 'Other'];
+const ALL_ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'Other'];
+
+function TagAutocomplete({
+  entities,
+  currentTags,
+  onAdd,
+}: {
+  entities: any[];
+  currentTags: string[];
+  onAdd: (tag: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: initiatives = [] } = useQuery({
+    queryKey: ['initiatives'],
+    queryFn: () => initiativesApi.list().then(r => r.data),
+  });
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Build suggestion list: entities + initiatives, excluding already-applied tags
+  const suggestions = useMemo(() => {
+    const items: { label: string; type: string; icon: 'entity' | 'initiative' }[] = [];
+
+    // Clients first, then other entities
+    const clients = entities.filter(e => e.entityType === 'Client');
+    const others = entities.filter(e => e.entityType !== 'Client');
+
+    clients.forEach(e => items.push({ label: e.name, type: 'Client', icon: 'entity' }));
+    others.forEach(e => items.push({ label: e.name, type: e.entityType, icon: 'entity' }));
+    initiatives.forEach(i => items.push({ label: i.title, type: 'Initiative', icon: 'initiative' }));
+
+    return items.filter(item =>
+      !currentTags.some(t => t.toLowerCase() === item.label.toLowerCase())
+    );
+  }, [entities, initiatives, currentTags]);
+
+  const filtered = search
+    ? suggestions.filter(s => s.label.toLowerCase().includes(search.toLowerCase()))
+    : suggestions.slice(0, 15);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className="input"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Type to search clients, organizations, initiatives…"
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const tag = search.trim();
+            if (tag) { onAdd(tag); setSearch(''); setOpen(false); }
+          }
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <div
+          className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg shadow-lg"
+          style={{ background: '#1c2333', border: '1px solid #30363d' }}
+        >
+          {filtered.slice(0, 20).map(item => (
+            <button
+              key={`${item.type}-${item.label}`}
+              type="button"
+              onClick={() => { onAdd(item.label); setSearch(''); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2"
+              style={{ borderBottom: '1px solid #30363d' }}
+            >
+              {item.icon === 'entity' ? (
+                <Building2 size={12} style={{ color: item.type === 'Client' ? '#c9a84c' : '#60a5fa', flexShrink: 0 }} />
+              ) : (
+                <Target size={12} style={{ color: '#34d399', flexShrink: 0 }} />
+              )}
+              <span style={{ color: '#e6edf3' }}>{item.label}</span>
+              <span className="text-xs ml-auto" style={{ color: '#8b949e' }}>{item.type}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   contact?: Contact;
@@ -41,6 +125,7 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
     officePhone: contact?.officePhone || '',
     cell: contact?.cell || '',
     linkedIn: contact?.linkedIn || '',
+    website: (contact as any)?.website || '',
     bio: contact?.bio || '',
     entityId: contact?.entityId || defaultEntityId || '',
     tags: contact?.tags || [] as string[],
@@ -113,6 +198,7 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
         officePhone: form.officePhone || null,
         cell: form.cell || null,
         linkedIn: form.linkedIn || null,
+        website: form.website || null,
         bio: form.bio || null,
       };
       if (contact?.id) {
@@ -260,6 +346,11 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
           </div>
 
           <div>
+            <label className="label">Website</label>
+            <input className="input" type="url" value={form.website} onChange={set('website')} placeholder="https://…" />
+          </div>
+
+          <div>
             <label className="label">Bio / Notes</label>
             <textarea
               className="input"
@@ -271,24 +362,47 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
           </div>
 
           <div>
-            <label className="label">Tags</label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {CONTACT_TAGS.map(tag => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className="badge cursor-pointer transition-all"
-                  style={{
-                    background: form.tags.includes(tag) ? 'rgba(201,168,76,0.15)' : '#161b22',
-                    color: form.tags.includes(tag) ? '#c9a84c' : '#8b949e',
-                    border: `1px solid ${form.tags.includes(tag) ? '#c9a84c' : '#30363d'}`,
-                  }}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
+            <label className="label">Tags — Associations</label>
+            <p className="text-xs mb-2" style={{ color: '#8b949e' }}>
+              Tag with a client, initiative, or organization to create an association.
+            </p>
+            {form.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-1 mb-2">
+                {form.tags.filter(t => t !== 'Republican' && t !== 'Democrat' && t !== 'Independent').map(tag => {
+                  // Determine if tag matches an entity or initiative
+                  const matchedEntity = entities.find(e => e.name.toLowerCase() === tag.toLowerCase());
+                  const isClientTag = matchedEntity?.entityType === 'Client';
+                  const isOrgTag = matchedEntity && !isClientTag;
+
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className="badge cursor-pointer transition-all flex items-center gap-1"
+                      style={{
+                        background: isClientTag ? 'rgba(201,168,76,0.15)' : isOrgTag ? 'rgba(96,165,250,0.15)' : 'rgba(139,148,158,0.1)',
+                        color: isClientTag ? '#c9a84c' : isOrgTag ? '#60a5fa' : '#8b949e',
+                        border: `1px solid ${isClientTag ? '#c9a84c' : isOrgTag ? '#60a5fa' : '#30363d'}`,
+                      }}
+                    >
+                      {isClientTag && <Building2 size={10} />}
+                      {isOrgTag && <Building2 size={10} />}
+                      {tag} ×
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <TagAutocomplete
+              entities={entities}
+              currentTags={form.tags}
+              onAdd={(tag) => {
+                if (!form.tags.includes(tag)) {
+                  setForm(f => ({ ...f, tags: [...f.tags, tag] }));
+                }
+              }}
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

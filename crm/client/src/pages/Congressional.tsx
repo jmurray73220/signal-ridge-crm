@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Download, ChevronRight, Landmark, Users } from 'lucide-react';
 import { entitiesApi, contactsApi, exportApi } from '../api';
@@ -18,6 +18,7 @@ type Tab = 'offices' | 'people';
 
 export function Congressional() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterChamber, setFilterChamber] = useState('');
@@ -185,7 +186,7 @@ export function Congressional() {
               </thead>
               <tbody>
                 {filteredEntities.map(e => (
-                  <tr key={e.id} className="table-row">
+                  <tr key={e.id} className="table-row" onClick={() => navigate(`/entities/${e.id}`)}>
                     <td className="px-4 py-3">
                       <Link to={`/entities/${e.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
                         {e.name.toLowerCase().includes('committee') ? e.name : (e.memberName || e.name)}
@@ -262,7 +263,7 @@ export function Congressional() {
                 {filteredContacts.map(c => {
                   const isCommittee = c.entity?.name?.toLowerCase().includes('committee');
                   return (
-                    <tr key={c.id} className="table-row">
+                    <tr key={c.id} className="table-row" onClick={() => navigate(`/contacts/${c.id}`)}>
                       <td className="px-4 py-3">
                         <Link to={`/contacts/${c.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
                           {c.firstName} {c.lastName}

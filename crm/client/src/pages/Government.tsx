@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Download, ChevronRight, Building2 } from 'lucide-react';
 import { entitiesApi, exportApi } from '../api';
@@ -15,6 +15,7 @@ function formatDate(d?: string | null) {
 
 export function Government() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -103,7 +104,7 @@ export function Government() {
             </thead>
             <tbody>
               {filtered.map(e => (
-                <tr key={e.id} className="table-row">
+                <tr key={e.id} className="table-row" onClick={() => navigate(`/entities/${e.id}`)}>
                   <td className="px-4 py-3">
                     <Link to={`/entities/${e.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
                       {e.name}

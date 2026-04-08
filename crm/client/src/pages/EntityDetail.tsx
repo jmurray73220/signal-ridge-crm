@@ -5,7 +5,7 @@ import {
   ArrowLeft, Edit2, Trash2, MessageSquare, Target,
   CheckSquare, Users, Sparkles, Plus, ExternalLink
 } from 'lucide-react';
-import { entitiesApi, tasksApi } from '../api';
+import { entitiesApi, tasksApi, contactsApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { EntityModal } from '../components/EntityModal';
@@ -31,7 +31,7 @@ function InteractionTypeBadge({ type }: { type: string }) {
   );
 }
 
-type Tab = 'people' | 'initiatives' | 'interactions' | 'tasks';
+type Tab = 'people' | 'contacts' | 'initiatives' | 'interactions' | 'tasks';
 
 export function EntityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -49,6 +49,13 @@ export function EntityDetail() {
     queryKey: ['entity', id],
     queryFn: () => entitiesApi.get(id!).then(r => r.data),
     enabled: !!id,
+  });
+
+  // Fetch all contacts for tagged contacts feature (only for Client entities)
+  const { data: allContacts = [] } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: () => contactsApi.list().then(r => r.data),
+    enabled: entity?.entityType === 'Client',
   });
 
   const deleteEntity = useMutation({
@@ -226,89 +233,239 @@ export function EntityDetail() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4" style={{ borderBottom: '1px solid #30363d' }}>
-        {([
-          ['people', 'People', contacts.length],
-          ['initiatives', 'Initiatives', allInitiatives.length],
-          ['interactions', 'Interactions', interactions.length],
-          ['tasks', 'Tasks', tasks.length],
-        ] as [Tab, string, number][]).map(([t, label, count]) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="px-4 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: tab === t ? '#e6edf3' : '#8b949e',
-              borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
-              marginBottom: -1,
-              background: 'transparent',
-            }}
-          >
-            {label} <span className="ml-1 text-xs" style={{ color: '#8b949e' }}>({count})</span>
-          </button>
-        ))}
-      </div>
+      {/* Compute tagged contacts for Client entities */}
+      {(() => {
+        const isClient = entity.entityType === 'Client';
+        const taggedContacts = isClient
+          ? allContacts.filter(c =>
+              c.entityId !== id &&
+              (c.tags || []).some(t => t.toLowerCase() === entity.name.toLowerCase())
+            )
+          : [];
 
-      {/* People Tab */}
-      {tab === 'people' && (
-        <div>
-          {user?.role !== 'Viewer' && (
-            <div className="flex justify-end mb-3">
-              <button onClick={() => setShowAddContact(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                <Plus size={14} /> Add Contact
-              </button>
+        // Group tagged contacts by entity type
+        const govContacts = taggedContacts.filter(c => c.entity?.entityType === 'GovernmentOrganization');
+        const congContacts = taggedContacts.filter(c => c.entity?.entityType === 'CongressionalOffice');
+        const otherTagged = taggedContacts.filter(c =>
+          c.entity?.entityType !== 'GovernmentOrganization' &&
+          c.entity?.entityType !== 'CongressionalOffice'
+        );
+
+        const totalPeopleCount = contacts.length + (isClient ? taggedContacts.length : 0);
+
+        return (
+          <>
+            {/* Tabs */}
+            <div className="flex gap-1 mb-4" style={{ borderBottom: '1px solid #30363d' }}>
+              {([
+                ['people', isClient ? 'People' : 'People', contacts.length],
+                ...(isClient ? [['contacts', 'Tagged Contacts', taggedContacts.length] as [Tab, string, number]] : []),
+                ['initiatives', 'Initiatives', allInitiatives.length],
+                ['interactions', 'Interactions', interactions.length],
+                ['tasks', 'Tasks', tasks.length],
+              ] as [Tab, string, number][]).map(([t, label, count]) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="px-4 py-2.5 text-sm font-medium transition-colors"
+                  style={{
+                    color: tab === t ? '#e6edf3' : '#8b949e',
+                    borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
+                    marginBottom: -1,
+                    background: 'transparent',
+                  }}
+                >
+                  {label} <span className="ml-1 text-xs" style={{ color: '#8b949e' }}>({count})</span>
+                </button>
+              ))}
             </div>
-          )}
-          {contacts.length === 0 ? (
-            <div className="card text-center py-10">
-              <Users size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No contacts associated with this organization.</p>
-            </div>
-          ) : (
-            <div className="card p-0 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #30363d' }}>
-                    {['Name', 'Rank / Title', 'Tags', 'Last Interaction'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {contacts.map((c: unknown) => {
-                    const contact = c as { id: string; firstName: string; lastName: string; rank?: string; title?: string; tags?: string; interactions?: Array<{ interaction: { date: string } }> };
-                    return (
-                      <tr key={contact.id} className="table-row">
-                        <td className="px-4 py-3">
-                          <Link to={`/contacts/${contact.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
-                            {contact.firstName} {contact.lastName}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>
-                          {contact.rank && !entity.name.toLowerCase().includes('committee') && <span className="font-medium">{contact.rank} </span>}
-                          {contact.title}
-                          {contact.rank && entity.name.toLowerCase().includes('committee') && <span className="text-xs ml-1" style={{ color: '#8b949e' }}>({contact.rank})</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {(JSON.parse(contact.tags || '[]') as string[]).slice(0, 3).map((tag: string) => (
-                              <span key={tag} className="badge" style={{ background: '#161b22', color: '#8b949e', border: '1px solid #30363d' }}>{tag}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>
-                          {formatDate(contact.interactions?.[0]?.interaction?.date)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+
+            {/* People Tab (direct employees/members) */}
+            {tab === 'people' && (
+              <div>
+                {user?.role !== 'Viewer' && (
+                  <div className="flex justify-end mb-3">
+                    <button onClick={() => setShowAddContact(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
+                      <Plus size={14} /> Add Contact
+                    </button>
+                  </div>
+                )}
+                {contacts.length === 0 ? (
+                  <div className="card text-center py-10">
+                    <Users size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
+                    <p className="text-sm" style={{ color: '#8b949e' }}>No contacts associated with this organization.</p>
+                  </div>
+                ) : (
+                  <div className="card p-0 overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #30363d' }}>
+                          {['Name', 'Rank / Title', 'Tags', 'Last Interaction'].map(h => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contacts.map((c: unknown) => {
+                          const contact = c as { id: string; firstName: string; lastName: string; rank?: string; title?: string; tags?: string; interactions?: Array<{ interaction: { date: string } }> };
+                          return (
+                            <tr key={contact.id} className="table-row" onClick={() => navigate(`/contacts/${contact.id}`)}>
+                              <td className="px-4 py-3">
+                                <Link to={`/contacts/${contact.id}`} className="text-sm font-medium hover:text-accent" style={{ color: '#e6edf3', textDecoration: 'none' }}>
+                                  {contact.firstName} {contact.lastName}
+                                </Link>
+                              </td>
+                              <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>
+                                {contact.rank && !entity.name.toLowerCase().includes('committee') && <span className="font-medium">{contact.rank} </span>}
+                                {contact.title}
+                                {contact.rank && entity.name.toLowerCase().includes('committee') && <span className="text-xs ml-1" style={{ color: '#8b949e' }}>({contact.rank})</span>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {(JSON.parse(contact.tags || '[]') as string[]).slice(0, 3).map((tag: string) => (
+                                    <span key={tag} className="badge" style={{ background: '#161b22', color: '#8b949e', border: '1px solid #30363d' }}>{tag}</span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>
+                                {formatDate(contact.interactions?.[0]?.interaction?.date)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tagged Contacts Tab (Client entities only) */}
+            {tab === 'contacts' && isClient && (
+              <div>
+                {taggedContacts.length === 0 ? (
+                  <div className="card text-center py-10">
+                    <Users size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
+                    <p className="text-sm" style={{ color: '#8b949e' }}>No contacts tagged with "{entity.name}".</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Congressional contacts */}
+                    {congContacts.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-widest mb-2 flex items-center gap-2" style={{ color: '#60a5fa' }}>
+                          Congressional ({congContacts.length})
+                        </h3>
+                        <div className="card p-0 overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid #30363d' }}>
+                                {['Name', 'Title', 'Office', 'Party'].map(h => (
+                                  <th key={h} className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {congContacts.map(c => (
+                                <tr key={c.id} className="table-row" onClick={() => navigate(`/contacts/${c.id}`)}>
+                                  <td className="px-4 py-2">
+                                    <Link to={`/contacts/${c.id}`} className="text-sm font-medium" style={{ color: '#e6edf3', textDecoration: 'none' }}>
+                                      {c.firstName} {c.lastName}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-2 text-sm" style={{ color: '#8b949e' }}>{c.title || '—'}</td>
+                                  <td className="px-4 py-2">
+                                    <Link to={`/entities/${c.entity?.id}`} className="text-xs" style={{ color: '#8b949e', textDecoration: 'none' }}>
+                                      {c.entity?.name}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-2 text-xs" style={{ color: c.entity?.party === 'Democrat' ? '#60a5fa' : c.entity?.party === 'Republican' ? '#f87171' : '#8b949e' }}>
+                                    {c.entity?.party || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Government org contacts */}
+                    {govContacts.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-widest mb-2 flex items-center gap-2" style={{ color: '#34d399' }}>
+                          Government Organizations ({govContacts.length})
+                        </h3>
+                        <div className="card p-0 overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid #30363d' }}>
+                                {['Name', 'Title', 'Organization'].map(h => (
+                                  <th key={h} className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {govContacts.map(c => (
+                                <tr key={c.id} className="table-row" onClick={() => navigate(`/contacts/${c.id}`)}>
+                                  <td className="px-4 py-2">
+                                    <Link to={`/contacts/${c.id}`} className="text-sm font-medium" style={{ color: '#e6edf3', textDecoration: 'none' }}>
+                                      {c.firstName} {c.lastName}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-2 text-sm" style={{ color: '#8b949e' }}>{c.title || '—'}</td>
+                                  <td className="px-4 py-2">
+                                    <Link to={`/entities/${c.entity?.id}`} className="text-xs" style={{ color: '#8b949e', textDecoration: 'none' }}>
+                                      {c.entity?.name}
+                                    </Link>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other tagged contacts */}
+                    {otherTagged.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: '#8b949e' }}>
+                          Other ({otherTagged.length})
+                        </h3>
+                        <div className="card p-0 overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid #30363d' }}>
+                                {['Name', 'Title', 'Organization'].map(h => (
+                                  <th key={h} className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {otherTagged.map(c => (
+                                <tr key={c.id} className="table-row" onClick={() => navigate(`/contacts/${c.id}`)}>
+                                  <td className="px-4 py-2">
+                                    <Link to={`/contacts/${c.id}`} className="text-sm font-medium" style={{ color: '#e6edf3', textDecoration: 'none' }}>
+                                      {c.firstName} {c.lastName}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-2 text-sm" style={{ color: '#8b949e' }}>{c.title || '—'}</td>
+                                  <td className="px-4 py-2 text-xs" style={{ color: '#8b949e' }}>{c.entity?.name || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Initiatives Tab */}
       {tab === 'initiatives' && (

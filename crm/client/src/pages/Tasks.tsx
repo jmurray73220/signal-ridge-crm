@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, CheckSquare, Trash2 } from 'lucide-react';
+import { Plus, CheckSquare, Trash2, Pencil } from 'lucide-react';
 import { tasksApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { TaskModal } from '../components/TaskModal';
@@ -45,9 +45,10 @@ function groupTasks(tasks: Task[]): Group[] {
   return groups.filter(g => g.items.length > 0);
 }
 
-function TaskRow({ task, onComplete, onDelete, canEdit, canDelete }: {
+function TaskRow({ task, onComplete, onEdit, onDelete, canEdit, canDelete }: {
   task: Task;
   onComplete: (id: string) => void;
+  onEdit: (t: Task) => void;
   onDelete: (id: string) => void;
   canEdit: boolean;
   canDelete: boolean;
@@ -102,11 +103,18 @@ function TaskRow({ task, onComplete, onDelete, canEdit, canDelete }: {
         </div>
       </div>
 
-      {canDelete && (
-        <button onClick={() => onDelete(task.id)} className="flex-shrink-0 hover:opacity-80 p-1" style={{ color: '#30363d' }} title="Delete">
-          <Trash2 size={14} />
-        </button>
-      )}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {canEdit && !task.completed && (
+          <button onClick={() => onEdit(task)} className="p-1 hover:opacity-80" style={{ color: '#8b949e' }} title="Edit">
+            <Pencil size={13} />
+          </button>
+        )}
+        {canDelete && (
+          <button onClick={() => onDelete(task.id)} className="p-1 hover:opacity-80" style={{ color: '#30363d' }} title="Delete">
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -115,6 +123,7 @@ export function Tasks() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
+  const [editTask, setEditTask] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -197,6 +206,7 @@ export function Tasks() {
                     key={task.id}
                     task={task}
                     onComplete={id => completeTask.mutate(id)}
+                    onEdit={t => setEditTask(t)}
                     onDelete={id => setConfirmDeleteId(id)}
                     canEdit={user?.role !== 'Viewer'}
                     canDelete={user?.role === 'Admin'}
@@ -208,13 +218,16 @@ export function Tasks() {
         </div>
       )}
 
-      {showModal && (
+      {(showModal || editTask) && (
         <TaskModal
-          onClose={() => setShowModal(false)}
+          task={editTask || undefined}
+          onClose={() => { setShowModal(false); setEditTask(null); }}
           onSave={() => {
+            const wasEdit = !!editTask;
             setShowModal(false);
+            setEditTask(null);
             qc.invalidateQueries({ queryKey: ['tasks'] });
-            toast.success('Task created');
+            toast.success(wasEdit ? 'Task updated' : 'Task created');
           }}
         />
       )}

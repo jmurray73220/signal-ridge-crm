@@ -39,7 +39,8 @@ export async function getInitiative(req: AuthRequest, res: Response) {
       include: {
         primaryEntity: true,
         contacts: {
-          include: { contact: { include: { entity: { select: { id: true, name: true, entityType: true } } } } },
+          include: { contact: { include: { entity: { select: { id: true, name: true, entityType: true, chamber: true, committee: true, party: true, subcommittee: true, governmentType: true } } } } },
+          orderBy: { sortOrder: 'asc' },
         },
         entities: {
           include: { entity: true },
@@ -47,7 +48,7 @@ export async function getInitiative(req: AuthRequest, res: Response) {
         interactions: {
           include: {
             contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
-            entity: { select: { id: true, name: true, entityType: true } },
+            entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } },
           },
           orderBy: { date: 'desc' },
         },
@@ -192,6 +193,26 @@ export async function addInitiativeEntity(req: AuthRequest, res: Response) {
       include: { entity: { select: { id: true, name: true, entityType: true } } },
     });
     return res.status(201).json(link);
+  } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function reorderInitiativeContacts(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  const { order } = req.body; // Array of { contactId, sortOrder }
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+
+  try {
+    await Promise.all(
+      order.map((item: { contactId: string; sortOrder: number }) =>
+        prisma.initiativeContact.update({
+          where: { initiativeId_contactId: { initiativeId: id, contactId: item.contactId } },
+          data: { sortOrder: item.sortOrder },
+        })
+      )
+    );
+    return res.json({ message: 'Order updated' });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }

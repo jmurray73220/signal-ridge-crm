@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Plus, Trash2, Pencil } from 'lucide-react';
@@ -10,7 +10,15 @@ import { useAuth } from '../contexts/AuthContext';
 import type { Reminder } from '../types';
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const date = new Date(d);
+  const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const hours = date.getUTCHours();
+  const mins = date.getUTCMinutes();
+  if (hours === 0 && mins === 0) return datePart;
+  const h = hours % 12 || 12;
+  const ampm = hours < 12 ? 'AM' : 'PM';
+  const timePart = `${h}:${mins.toString().padStart(2, '0')} ${ampm}`;
+  return `${datePart} at ${timePart}`;
 }
 
 function isOverdue(r: Reminder) {
@@ -179,6 +187,45 @@ export function Reminders() {
     queryKey: ['reminders'],
     queryFn: () => remindersApi.list().then(r => r.data),
   });
+
+  // ---- Notification popup for due reminders ----
+  const notifiedRef = useRef<Set<string>>(new Set());
+
+  const checkDueReminders = useCallback(() => {
+    const now = Date.now();
+    reminders
+      .filter(r => !r.completed && !notifiedRef.current.has(r.id))
+      .forEach(r => {
+        const remindTime = new Date(r.remindAt).getTime();
+        if (remindTime <= now) {
+          notifiedRef.current.add(r.id);
+          // Browser notification if permitted
+          if (Notification.permission === 'granted') {
+            new Notification('Reminder Due', { body: r.title, icon: '/favicon.ico' });
+          }
+          // In-app toast notification
+          toast(r.title, {
+            icon: '🔔',
+            duration: 10000,
+            style: { background: '#1c2333', color: '#e6edf3', border: '1px solid #c9a84c' },
+          });
+        }
+      });
+  }, [reminders]);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Poll every 30 seconds for due reminders
+  useEffect(() => {
+    checkDueReminders();
+    const interval = setInterval(checkDueReminders, 30000);
+    return () => clearInterval(interval);
+  }, [checkDueReminders]);
 
   const dismiss = useMutation({
     mutationFn: (id: string) => remindersApi.update(id, { completed: true }),

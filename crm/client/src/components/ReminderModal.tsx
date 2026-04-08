@@ -15,10 +15,21 @@ interface Props {
 }
 
 export function ReminderModal({ reminder, defaultContactId, defaultEntityId, defaultInteractionId, onClose, onSave }: Props) {
+  // Extract time from existing reminder if present, otherwise empty (will default to 11:00)
+  const existingTime = reminder?.remindAt
+    ? (() => {
+        const d = new Date(reminder.remindAt);
+        const h = d.getUTCHours().toString().padStart(2, '0');
+        const m = d.getUTCMinutes().toString().padStart(2, '0');
+        return h !== '00' || m !== '00' ? `${h}:${m}` : '';
+      })()
+    : '';
+
   const [form, setForm] = useState({
     title: reminder?.title || '',
     notes: reminder?.notes || '',
-    remindAt: reminder?.remindAt ? reminder.remindAt.split('T')[0] : '',
+    remindDate: reminder?.remindAt ? reminder.remindAt.split('T')[0] : '',
+    remindTime: existingTime,
     contactId: reminder?.contactId || defaultContactId || '',
     entityId: reminder?.entityId || defaultEntityId || '',
     initiativeId: reminder?.initiativeId || '',
@@ -37,13 +48,16 @@ export function ReminderModal({ reminder, defaultContactId, defaultEntityId, def
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title) { toast.error('Title required'); return; }
-    if (!form.remindAt) { toast.error('Remind date required'); return; }
+    if (!form.remindDate) { toast.error('Remind date required'); return; }
     setLoading(true);
     try {
+      // Combine date + time; default to 11:00 if no time specified
+      const time = form.remindTime || '11:00';
+      const remindAt = `${form.remindDate}T${time}:00`;
       const data = {
         title: form.title,
         notes: form.notes || undefined,
-        remindAt: form.remindAt,
+        remindAt,
         contactId: form.contactId || null,
         entityId: form.entityId || null,
         initiativeId: form.initiativeId || null,
@@ -83,9 +97,18 @@ export function ReminderModal({ reminder, defaultContactId, defaultEntityId, def
               autoFocus
             />
           </div>
-          <div>
-            <label className="label">Remind Me On *</label>
-            <input type="date" className="input" value={form.remindAt} onChange={set('remindAt')} required />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Remind Date *</label>
+              <input type="date" className="input" value={form.remindDate} onChange={set('remindDate')} required />
+            </div>
+            <div>
+              <label className="label">Time (optional)</label>
+              <input type="time" className="input" value={form.remindTime} onChange={set('remindTime')} placeholder="11:00 AM default" />
+              {!form.remindTime && (
+                <span className="text-xs mt-0.5 block" style={{ color: '#8b949e' }}>Defaults to 11:00 AM</span>
+              )}
+            </div>
           </div>
           <div>
             <label className="label">Notes (optional)</label>

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Download, Upload, ChevronRight, User } from 'lucide-react';
 import { contactsApi, exportApi } from '../api';
@@ -32,28 +32,37 @@ function formatDate(d?: string | null) {
 
 export function Contacts() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [showModal, setShowModal] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ['contacts'],
     queryFn: () => contactsApi.list().then(r => r.data),
   });
 
-  const filtered = contacts.filter(c => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
-      c.title?.toLowerCase().includes(q) ||
-      c.rank?.toLowerCase().includes(q) ||
-      c.entity?.name?.toLowerCase().includes(q) ||
-      c.tags?.some(t => t.toLowerCase().includes(q))
-    );
-  });
+  const filtered = contacts
+    .filter(c => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
+        c.title?.toLowerCase().includes(q) ||
+        c.rank?.toLowerCase().includes(q) ||
+        c.entity?.name?.toLowerCase().includes(q) ||
+        c.tags?.some(t => t.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+      const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+      return sortDir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    });
 
   const handleExport = async () => {
     try {
@@ -176,7 +185,13 @@ export function Contacts() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid #30363d' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>Name</th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer select-none"
+                  style={{ color: '#8b949e' }}
+                  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                >
+                  Name {sortDir === 'asc' ? '↑' : '↓'}
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>Rank / Title</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>Organization</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>Tags</th>
@@ -186,7 +201,7 @@ export function Contacts() {
             </thead>
             <tbody>
               {filtered.map(contact => (
-                <tr key={contact.id} className="table-row">
+                <tr key={contact.id} className="table-row" onClick={() => navigate(`/contacts/${contact.id}`)}>
                   <td className="px-4 py-3">
                     <Link
                       to={`/contacts/${contact.id}`}
