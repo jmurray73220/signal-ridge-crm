@@ -17,6 +17,9 @@ model User {
   firstName          String
   lastName           String
   role               String    @default("Viewer") // UserRole: Admin | Editor | Viewer
+  workflowRole       String?   // WorkflowRole: WorkflowAdmin | WorkflowEditor | WorkflowViewer
+  workflowClientId   String?
+  workflowClient     WorkflowClient? @relation("WorkflowClientUsers", fields: [workflowClientId], references: [id])
   isActive           Boolean   @default(true)
   mustChangePassword Boolean   @default(false)
   lastLogin          DateTime?
@@ -38,6 +41,13 @@ model User {
   tasksUpdated        Task[]        @relation("TaskUpdatedBy")
   remindersCreated    Reminder[]    @relation("ReminderCreatedBy")
   remindersUpdated    Reminder[]    @relation("ReminderUpdatedBy")
+
+  // Workflow audit relations
+  workflowActionItemsCreated WorkflowActionItem[] @relation("WorkflowActionItemCreatedBy")
+  workflowActionItemsUpdated WorkflowActionItem[] @relation("WorkflowActionItemUpdatedBy")
+  workflowSOWsCreated        WorkflowSOW[]        @relation("WorkflowSOWCreatedBy")
+  workflowSOWVersionsCreated WorkflowSOWVersion[] @relation("WorkflowSOWVersionCreatedBy")
+  workflowCommentsCreated    WorkflowComment[]    @relation("WorkflowCommentCreatedBy")
 }
 
 model Contact {
@@ -343,4 +353,132 @@ model ReportTemplate {
   description String?
   fileData    String   // Base64-encoded .docx file
   createdAt   DateTime @default(now())
+}
+
+// ─── Workflow ────────────────────────────────────────────────────────────────
+
+model WorkflowClient {
+  id        String   @id @default(uuid())
+  name      String
+  clientId  String?  // Links to CRM Entity.id (soft reference; not FK to avoid coupling)
+  createdAt DateTime @default(now())
+
+  tracks WorkflowTrack[]
+  sows   WorkflowSOW[]
+  users  User[]        @relation("WorkflowClientUsers")
+}
+
+model WorkflowTrack {
+  id               String   @id @default(uuid())
+  workflowClientId String
+  workflowClient   WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?
+  fundingVehicle   String?
+  status           String   @default("Active") // Active | OnHold | Completed | Archived
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  phases WorkflowPhase[]
+  sows   WorkflowSOW[]
+}
+
+model WorkflowPhase {
+  id          String   @id @default(uuid())
+  trackId     String
+  track       WorkflowTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  budget      String?
+  timeframe   String?
+  status      String   @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  milestones WorkflowMilestone[]
+}
+
+model WorkflowMilestone {
+  id          String    @id @default(uuid())
+  phaseId     String
+  phase       WorkflowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      String    @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  actionItems WorkflowActionItem[]
+}
+
+model WorkflowActionItem {
+  id          String    @id @default(uuid())
+  milestoneId String
+  milestone   WorkflowMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  title       String
+  notes       String?
+  status      String    @default("Todo") // Todo | InProgress | Done | Blocked
+  assignedTo  String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdBy       User?   @relation("WorkflowActionItemCreatedBy", fields: [createdByUserId], references: [id])
+  updatedBy       User?   @relation("WorkflowActionItemUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  comments WorkflowComment[]
+}
+
+model WorkflowSOW {
+  id               String   @id @default(uuid())
+  workflowClientId String
+  workflowClient   WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
+  trackId          String?
+  track            WorkflowTrack? @relation(fields: [trackId], references: [id])
+  title            String
+  content          String   @default("")
+  version          Int      @default(1)
+  status           String   @default("Draft") // Draft | Active | Archived
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdByUserId String?
+  createdBy       User?   @relation("WorkflowSOWCreatedBy", fields: [createdByUserId], references: [id])
+
+  versions WorkflowSOWVersion[]
+  comments WorkflowComment[]
+}
+
+model WorkflowSOWVersion {
+  id        String   @id @default(uuid())
+  sowId     String
+  sow       WorkflowSOW @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  content   String
+  version   Int
+  createdAt DateTime @default(now())
+
+  createdByUserId String?
+  createdBy       User?   @relation("WorkflowSOWVersionCreatedBy", fields: [createdByUserId], references: [id])
+}
+
+model WorkflowComment {
+  id           String   @id @default(uuid())
+  actionItemId String?
+  actionItem   WorkflowActionItem? @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  sowId        String?
+  sow          WorkflowSOW?        @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  content      String
+  createdAt    DateTime @default(now())
+
+  createdByUserId String?
+  createdBy       User?   @relation("WorkflowCommentCreatedBy", fields: [createdByUserId], references: [id])
 }

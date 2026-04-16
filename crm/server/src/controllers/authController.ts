@@ -38,6 +38,8 @@ export async function login(req: Request, res: Response) {
       email: user.email,
       role: user.role as any,
       mustChangePassword: user.mustChangePassword,
+      workflowRole: (user as any).workflowRole ?? null,
+      workflowClientId: (user as any).workflowClientId ?? null,
     };
 
     const sessionDuration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
@@ -58,6 +60,8 @@ export async function login(req: Request, res: Response) {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        workflowRole: (user as any).workflowRole ?? null,
+        workflowClientId: (user as any).workflowClientId ?? null,
         mustChangePassword: user.mustChangePassword,
       },
     });
@@ -82,6 +86,8 @@ export async function me(req: AuthRequest, res: Response) {
         firstName: true,
         lastName: true,
         role: true,
+        workflowRole: true,
+        workflowClientId: true,
         mustChangePassword: true,
         lastLogin: true,
       },

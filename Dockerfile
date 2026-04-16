@@ -15,8 +15,11 @@ WORKDIR /app
 # Copy source
 COPY . .
 
-# Build client (Vite)
+# Build CRM client (Vite)
 RUN cd crm/client && npm install && npm run build
+
+# Build workflow client (Vite) — served at /workflow
+RUN cd crm/workflow-client && npm install && npm run build
 
 # Build server (TypeScript + Prisma)
 RUN cd crm/server && npm install && npx prisma generate && npm run build

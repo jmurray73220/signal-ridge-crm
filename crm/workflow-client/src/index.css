@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: #0a1628;
+    color: #e6edf3;
+    font-family: 'IBM Plex Sans', sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0a1628;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #24375a;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #c9a84c;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent text-bg font-medium px-4 py-2 rounded text-sm hover:opacity-90 transition-opacity disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply bg-surface border border-border text-text-primary font-medium px-4 py-2 rounded text-sm hover:border-accent transition-colors;
+  }
+
+  .btn-danger {
+    @apply bg-status-red text-white font-medium px-4 py-2 rounded text-sm hover:opacity-90 transition-opacity;
+  }
+
+  .btn-ghost {
+    @apply text-text-muted hover:text-accent text-sm transition-colors;
+  }
+
+  .card {
+    @apply bg-surface border border-border rounded-lg p-4;
+  }
+
+  .card-hover {
+    @apply bg-surface border border-border rounded-lg p-4 hover:border-accent transition-colors cursor-pointer;
+  }
+
+  .input {
+    @apply bg-bg border border-border rounded px-3 py-2 text-text-primary text-sm w-full focus:outline-none focus:border-accent transition-colors;
+  }
+
+  .textarea {
+    @apply bg-bg border border-border rounded px-3 py-2 text-text-primary text-sm w-full focus:outline-none focus:border-accent transition-colors resize-y min-h-[80px];
+  }
+
+  .label {
+    @apply block text-text-muted text-xs font-medium mb-1 uppercase tracking-wider;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .badge-green { @apply bg-status-green/20 text-status-green; }
+  .badge-amber { @apply bg-status-amber/20 text-status-amber; }
+  .badge-red   { @apply bg-status-red/20 text-status-red; }
+  .badge-blue  { @apply bg-status-blue/20 text-status-blue; }
+  .badge-gold  { @apply bg-accent/20 text-accent; }
+  .badge-muted { @apply bg-border text-text-muted; }
+
+  .hierarchy-line {
+    @apply border-l-2 border-border pl-4 ml-2;
+  }
+}
+
+/* React MD Editor dark theme adjustments */
+.w-md-editor {
+  background-color: #12213a !important;
+  color: #e6edf3 !important;
+}
+.w-md-editor-toolbar {
+  background-color: #1a2b4a !important;
+  border-bottom: 1px solid #24375a !important;
+}
+.w-md-editor-text-pre > code,
+.w-md-editor-text-input {
+  color: #e6edf3 !important;
+}

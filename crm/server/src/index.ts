@@ -19,6 +19,7 @@ import usersRoutes from './routes/users';
 import budgetRoutes from './routes/budgets';
 import reportTemplateRoutes from './routes/reportTemplates';
 import settingsRoutes from './routes/settings';
+import workflowRoutes from './routes/workflow';
 import { errorHandler } from './middleware/errorHandler';
 import { startBackgroundSync } from './services/gmail';
 
@@ -50,6 +51,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/report-templates', reportTemplateRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/workflow', workflowRoutes);
 
 // Gmail routes (mixed auth/api prefix — handled internally in the router)
 app.use('/', gmailRoutes);
@@ -84,6 +86,8 @@ const marketingPath = process.env.MARKETING_PATH
   || path.join(process.cwd(), 'marketing');
 const clientDistPath = process.env.CLIENT_DIST_PATH
   || path.join(process.cwd(), 'crm/client/dist');
+const workflowClientDistPath = process.env.WORKFLOW_CLIENT_DIST_PATH
+  || path.join(process.cwd(), 'crm/workflow-client/dist');
 
 // Marketing site — root domain
 app.use(express.static(marketingPath));
@@ -97,6 +101,12 @@ app.get('/about', (_req, res) => res.sendFile(path.join(marketingPath, 'about.ht
 app.use('/crm', express.static(clientDistPath));
 app.get(/^\/crm(\/.*)?$/, (_req, res) => {
   res.sendFile(path.join(clientDistPath, 'index.html'));
+});
+
+// Workflow SPA at /workflow
+app.use('/workflow', express.static(workflowClientDistPath));
+app.get(/^\/workflow(\/.*)?$/, (_req, res) => {
+  res.sendFile(path.join(workflowClientDistPath, 'index.html'));
 });
 
 app.use(errorHandler);
