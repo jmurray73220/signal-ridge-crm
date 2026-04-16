@@ -1,5 +1,5 @@
 export type UserRole = 'Admin' | 'Editor' | 'Viewer';
-export type EntityType = 'CongressionalOffice' | 'GovernmentOrganization' | 'Company' | 'Client' | 'NGO' | 'Other';
+export type EntityType = 'CongressionalOffice' | 'GovernmentOrganization' | 'Company' | 'Client' | 'Other';
 export type Chamber = 'Senate' | 'House';
 export type Party = 'Republican' | 'Democrat' | 'Independent';
 export type GovernmentType = 'DoD' | 'Intel' | 'DHS' | 'State' | 'Other';
@@ -43,6 +43,7 @@ export interface Entity {
   // Company
   industry?: string;
   contractVehicles?: string[];
+  capabilityDescription?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: { firstName: string; lastName: string };
@@ -154,4 +155,43 @@ export interface Task {
   initiative?: { id: string; title: string };
   createdAt: string;
   updatedAt: string;
+}
+
+// Budget Intelligence
+export interface BudgetDocument {
+  id: string;
+  name: string;
+  documentType: string;
+  fiscalYear: string;
+  serviceBranch: string;
+  createdAt: string;
+}
+
+export interface BudgetConversation {
+  id: string;
+  budgetDocumentId: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  links?: BudgetLink[];
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface BudgetLink {
+  id: string;
+  budgetConversationId: string;
+  entityType: string;
+  entityId: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
 }

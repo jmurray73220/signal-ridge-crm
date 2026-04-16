@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { Search, X, CheckSquare, Settings } from 'lucide-react';
 import { searchApi } from '../api';
 import { EntityTypeBadge } from './EntityTypeBadge';
 import type { Contact, Entity, Initiative } from '../types';
@@ -18,6 +18,7 @@ export function Header() {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const debounceRef = useRef<any>(null);
 
   useEffect(() => {
@@ -67,6 +68,8 @@ export function Header() {
     setQuery('');
     setResults(null);
   };
+
+  const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
   return (
     <header
@@ -190,6 +193,32 @@ export function Header() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Top-right nav items */}
+      <div className="flex items-center gap-1 ml-auto">
+        <Link
+          to="/tasks"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors"
+          style={{
+            color: isActive('/tasks') ? '#c9a84c' : '#8b949e',
+            background: isActive('/tasks') ? 'rgba(201,168,76,0.1)' : 'transparent',
+            textDecoration: 'none',
+          }}
+        >
+          <CheckSquare size={15} /> Tasks
+        </Link>
+        <Link
+          to="/settings/account"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors"
+          style={{
+            color: isActive('/settings') ? '#c9a84c' : '#8b949e',
+            background: isActive('/settings') ? 'rgba(201,168,76,0.1)' : 'transparent',
+            textDecoration: 'none',
+          }}
+        >
+          <Settings size={15} /> Settings
+        </Link>
       </div>
     </header>
   );

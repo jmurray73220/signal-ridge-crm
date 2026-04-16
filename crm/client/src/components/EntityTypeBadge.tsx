@@ -24,7 +24,7 @@ export function EntityTypeBadge({ entityType, chamber, governmentType, className
       return (
         <span
           className={`badge ${className}`}
-          style={{ background: '#1e3a5f', color: '#60a5fa' }}
+          style={{ background: '#2d2a1f', color: '#e0c97f' }}
         >
           SENATE
         </span>
@@ -33,7 +33,7 @@ export function EntityTypeBadge({ entityType, chamber, governmentType, className
     return (
       <span
         className={`badge ${className}`}
-        style={{ background: '#3b1f1f', color: '#f87171' }}
+        style={{ background: '#2d1f2d', color: '#d4a0d4' }}
       >
         HOUSE
       </span>
@@ -70,17 +70,6 @@ export function EntityTypeBadge({ entityType, chamber, governmentType, className
         style={{ background: '#1a2e1a', color: '#4ade80' }}
       >
         CLIENT
-      </span>
-    );
-  }
-
-  if (entityType === 'NGO') {
-    return (
-      <span
-        className={`badge ${className}`}
-        style={{ background: '#2a1f3b', color: '#c084fc' }}
-      >
-        NGO
       </span>
     );
   }

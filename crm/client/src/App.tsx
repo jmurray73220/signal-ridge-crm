@@ -26,6 +26,8 @@ import { Users } from './pages/settings/Users';
 import { Account } from './pages/settings/Account';
 import { GmailSettings } from './pages/settings/Gmail';
 import { GmailReview } from './pages/GmailReview';
+import { Tags } from './pages/Tags';
+import { BudgetAnalyzer } from './pages/BudgetAnalyzer';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -113,6 +115,14 @@ function AppRoutes() {
       <Route
         path="/reminders"
         element={<ProtectedRoute><Reminders /></ProtectedRoute>}
+      />
+      <Route
+        path="/tags"
+        element={<ProtectedRoute><Tags /></ProtectedRoute>}
+      />
+      <Route
+        path="/budget-analyzer"
+        element={<ProtectedRoute><BudgetAnalyzer /></ProtectedRoute>}
       />
       <Route
         path="/gmail/review"

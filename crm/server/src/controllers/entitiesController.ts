@@ -104,7 +104,7 @@ export async function createEntity(req: AuthRequest, res: Response) {
     name, entityType, website, description, address, tags,
     memberName, chamber, state, district, committee, party, subcommittee,
     parentAgency, subComponent, governmentType, budgetLineItem,
-    industry, contractVehicles,
+    industry, contractVehicles, capabilityDescription,
   } = req.body;
 
   if (!name || !entityType) {
@@ -133,6 +133,7 @@ export async function createEntity(req: AuthRequest, res: Response) {
         budgetLineItem: budgetLineItem || null,
         industry: industry || null,
         contractVehicles: JSON.stringify(contractVehicles || []),
+        capabilityDescription: capabilityDescription || null,
         createdByUserId: req.user!.userId,
         updatedByUserId: req.user!.userId,
       },

@@ -4,8 +4,7 @@ import { entitiesApi } from '../api';
 import type { Entity, EntityType } from '../types';
 import toast from 'react-hot-toast';
 
-const ENTITY_TAGS = ['Priority Account', 'Active Contract', 'Oversight', 'Appropriations', 'Authorization', 'FYDP', 'Current Client', 'Prospect'];
-const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'NGO', 'Other'];
+const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'Other'];
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS',
@@ -61,8 +60,10 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
     // Company
     industry: entity?.industry || '',
     contractVehicles: (entity?.contractVehicles || []).join(', '),
+    capabilityDescription: entity?.capabilityDescription || '',
   });
   const [loading, setLoading] = useState(false);
+  const [customTag, setCustomTag] = useState('');
 
   // Auto-detect committee mode when editing: if entity name contains "Committee" or memberName has ranking info
   const isExistingCommittee = entity?.entityType === 'CongressionalOffice' && (
@@ -168,6 +169,7 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
       } else if (form.entityType === 'Company' || form.entityType === 'Client') {
         data.industry = form.industry || null;
         data.contractVehicles = form.contractVehicles ? form.contractVehicles.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+        data.capabilityDescription = form.capabilityDescription || null;
       }
       if (entity?.id) {
         await entitiesApi.update(entity.id, data);
@@ -390,6 +392,20 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
                 <label className="label">Contract Vehicles (comma-separated)</label>
                 <input className="input" value={form.contractVehicles} onChange={set('contractVehicles')} placeholder="OASIS+, SEWP VI, GSA MAS" />
               </div>
+              <div>
+                <label className="label">Capability Description</label>
+                <textarea
+                  className="input"
+                  value={form.capabilityDescription}
+                  onChange={set('capabilityDescription')}
+                  rows={4}
+                  style={{ resize: 'vertical' }}
+                  placeholder="Describe what this company does, what products or services they offer, and what problems they solve. This is used by the Budget Analyzer to identify relevant funding opportunities."
+                />
+                <p className="text-xs mt-1" style={{ color: '#8b949e' }}>
+                  Used by the Budget Analyzer to identify relevant funding opportunities.
+                </p>
+              </div>
             </>
           )}
 
@@ -411,18 +427,45 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
 
           <div>
             <label className="label">Tags</label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {ENTITY_TAGS.map(tag => (
-                <button
-                  key={tag} type="button" onClick={() => toggleTag(tag)}
-                  className="badge cursor-pointer transition-all"
-                  style={{
-                    background: form.tags.includes(tag) ? 'rgba(201,168,76,0.15)' : '#161b22',
-                    color: form.tags.includes(tag) ? '#c9a84c' : '#8b949e',
-                    border: `1px solid ${form.tags.includes(tag) ? '#c9a84c' : '#30363d'}`,
-                  }}
-                >{tag}</button>
-              ))}
+            {form.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-1 mb-2">
+                {form.tags.map(tag => (
+                  <button
+                    key={tag} type="button" onClick={() => toggleTag(tag)}
+                    className="badge cursor-pointer transition-all"
+                    style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid #c9a84c' }}
+                  >{tag} ×</button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                value={customTag}
+                onChange={e => setCustomTag(e.target.value)}
+                placeholder="Type a tag and press Enter…"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const tag = customTag.trim();
+                    if (tag && !form.tags.includes(tag)) {
+                      setForm(f => ({ ...f, tags: [...f.tags, tag] }));
+                    }
+                    setCustomTag('');
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const tag = customTag.trim();
+                  if (tag && !form.tags.includes(tag)) {
+                    setForm(f => ({ ...f, tags: [...f.tags, tag] }));
+                  }
+                  setCustomTag('');
+                }}
+                className="btn-secondary text-sm"
+              >Add</button>
             </div>
           </div>
 

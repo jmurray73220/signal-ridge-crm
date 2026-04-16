@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Mail, CheckCircle, AlertCircle, RefreshCw, Sparkles } from 'lucide-react';
 import { gmailApi } from '../../api';
 import toast from 'react-hot-toast';
 
@@ -61,6 +61,14 @@ export function GmailSettings() {
       qc.invalidateQueries({ queryKey: ['gmail-status'] });
     },
     onError: () => toast.error('Failed to disconnect'),
+  });
+
+  const resummarize = useMutation({
+    mutationFn: () => gmailApi.resummarize().then(r => r.data),
+    onSuccess: (data) => {
+      toast.success(data.message);
+    },
+    onError: () => toast.error('Re-summarize failed'),
   });
 
   if (isLoading) {
@@ -201,6 +209,29 @@ export function GmailSettings() {
           </button>
         </div>
       </div>
+
+      {/* Re-summarize card */}
+      {isConnected && (
+        <div className="card p-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium" style={{ color: '#e6edf3' }}>Re-summarize Gmail interactions</div>
+              <div className="text-xs mt-0.5" style={{ color: '#8b949e' }}>
+                Uses Claude to re-generate summaries for all previously approved Gmail emails.
+              </div>
+            </div>
+            <button
+              onClick={() => resummarize.mutate()}
+              disabled={resummarize.isPending}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded"
+              style={{ color: '#c9a84c', border: '1px solid #c9a84c' }}
+            >
+              <Sparkles size={14} />
+              {resummarize.isPending ? 'Summarizing…' : 'Re-summarize All'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {!isConnected && (
         <p className="text-xs mt-3" style={{ color: '#8b949e' }}>

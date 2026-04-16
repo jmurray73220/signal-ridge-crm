@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
 dotenv.config({ path: '../.env' });
 
@@ -981,6 +983,37 @@ async function main() {
   ]);
 
   console.log(`${tasks.length} tasks created`);
+
+  // --- Default Report Template ---
+  const templatePaths = [
+    '/mnt/user-data/uploads/SITE525__FY26_Potential_Opportunities_1_21_26.docx',
+    path.resolve(__dirname, '../../SITE525__FY26_Potential_Opportunities_1_21_26.docx'),
+    path.resolve(__dirname, '../../../SITE525__FY26_Potential_Opportunities_1_21_26.docx'),
+  ];
+
+  let templateSeeded = false;
+  for (const templatePath of templatePaths) {
+    if (fs.existsSync(templatePath)) {
+      const fileData = fs.readFileSync(templatePath).toString('base64');
+      await prisma.reportTemplate.upsert({
+        where: { id: 'default-srs-template' },
+        update: {},
+        create: {
+          id: 'default-srs-template',
+          name: 'SRS Standard Report',
+          description: 'Default Signal Ridge Strategies report template.',
+          fileData,
+        },
+      });
+      console.log(`Default report template seeded from: ${templatePath}`);
+      templateSeeded = true;
+      break;
+    }
+  }
+  if (!templateSeeded) {
+    console.log('Default report template file not found — skipping template seed.');
+    console.log('Place SITE525__FY26_Potential_Opportunities_1_21_26.docx in the project root or /mnt/user-data/uploads/ and re-run seed.');
+  }
 
   console.log('\nSignal Ridge CRM seed complete!');
   console.log(`\nAdmin login: ${adminEmail}`);
