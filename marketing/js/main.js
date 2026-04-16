@@ -39,58 +39,6 @@
     });
   });
 
-  // ─── Contact form submit ──────────────────────────────────────────
-  var form = document.querySelector('[data-contact-form]');
-  if (form) {
-    var status = form.querySelector('[data-form-status]');
-    form.addEventListener('submit', async function (e) {
-      e.preventDefault();
-
-      var data = {
-        name: form.name.value.trim(),
-        email: form.email.value.trim(),
-        phone: form.phone.value.trim(),
-        message: form.message.value.trim(),
-      };
-
-      if (!data.name || !data.email || !data.message) {
-        if (status) {
-          status.textContent = 'Please fill in your name, email, and a message.';
-          status.className = 'form-status error';
-        }
-        return;
-      }
-
-      if (status) {
-        status.textContent = 'Sending…';
-        status.className = 'form-status';
-      }
-
-      var submitBtn = form.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.disabled = true;
-
-      try {
-        var res = await fetch('/api/contact', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-
-        if (!res.ok) throw new Error('Request failed with status ' + res.status);
-
-        if (status) {
-          status.textContent = "Thanks for reaching out. We'll be in touch.";
-          status.className = 'form-status success';
-        }
-        form.reset();
-      } catch (err) {
-        if (status) {
-          status.textContent = 'Something went wrong. Please email jon@signalridgestrategies.com directly.';
-          status.className = 'form-status error';
-        }
-      } finally {
-        if (submitBtn) submitBtn.disabled = false;
-      }
-    });
-  }
+  // Contact form: submission handled directly by Formspree via the
+  // form's action attribute — no JS interception needed.
 })();
