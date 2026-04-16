@@ -57,19 +57,43 @@ app.use('/', gmailRoutes);
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
-// Serve React frontend build
-// Production: Railway runs `node crm/server/dist/src/index.js` from the
-// repo root, so process.cwd() = repo root and client dist lives at
-// crm/client/dist. In dev, run the server from the repo root as well
-// (or set CLIENT_DIST_PATH to override).
+// Marketing contact form submissions
+app.post('/api/contact', express.json(), (req, res) => {
+  const { name, email, phone, message } = req.body || {};
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'name, email, and message are required' });
+  }
+  // TODO: wire up email delivery. For now, log the submission so it's
+  // visible in Railway logs and doesn't get dropped.
+  console.log('[contact]', JSON.stringify({
+    at: new Date().toISOString(),
+    name,
+    email,
+    phone: phone || null,
+    message,
+  }));
+  return res.json({ ok: true });
+});
+
+// ─── Static content ────────────────────────────────────────────────
+// All paths resolved from process.cwd() which is the repo root both in
+// dev (server run from repo root) and production (CMD from /app in
+// Dockerfile). Override with CLIENT_DIST_PATH / MARKETING_PATH env vars
+// if you run the server from elsewhere.
+const marketingPath = process.env.MARKETING_PATH
+  || path.join(process.cwd(), 'marketing');
 const clientDistPath = process.env.CLIENT_DIST_PATH
   || path.join(process.cwd(), 'crm/client/dist');
-app.use(express.static(clientDistPath));
 
-// SPA catch-all — must come after all API routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(clientDistPath, 'index.html'));
-});
+// Marketing site — root domain
+app.use(express.static(marketingPath));
+app.get('/', (_req, res) => res.sendFile(path.join(marketingPath, 'index.html')));
+app.get('/about', (_req, res) => res.sendFile(path.join(marketingPath, 'about.html')));
+
+// CRM SPA — /crm/*
+app.use('/crm', express.static(clientDistPath));
+app.get('/crm', (_req, res) => res.sendFile(path.join(clientDistPath, 'index.html')));
+app.get('/crm/*', (_req, res) => res.sendFile(path.join(clientDistPath, 'index.html')));
 
 app.use(errorHandler);
 

@@ -148,7 +148,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename="/crm">
         <AuthProvider>
           <AppRoutes />
           <Toaster
