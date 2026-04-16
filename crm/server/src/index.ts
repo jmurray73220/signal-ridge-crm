@@ -58,9 +58,12 @@ app.use('/', gmailRoutes);
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // Serve React frontend build
-// Use process.cwd() so the path works in both dev (ts-node from server/)
-// and production (node dist/src/index.js run from server/)
-const clientDistPath = path.join(process.cwd(), '../client/dist');
+// Production: Railway runs `node crm/server/dist/src/index.js` from the
+// repo root, so process.cwd() = repo root and client dist lives at
+// crm/client/dist. In dev, run the server from the repo root as well
+// (or set CLIENT_DIST_PATH to override).
+const clientDistPath = process.env.CLIENT_DIST_PATH
+  || path.join(process.cwd(), 'crm/client/dist');
 app.use(express.static(clientDistPath));
 
 // SPA catch-all — must come after all API routes
