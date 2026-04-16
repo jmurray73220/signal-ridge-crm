@@ -29,6 +29,7 @@ export interface WorkflowActionItem {
   id: string;
   milestoneId: string;
   title: string;
+  description: string | null;
   notes: string | null;
   status: ActionItemStatus;
   assignedTo: string | null;

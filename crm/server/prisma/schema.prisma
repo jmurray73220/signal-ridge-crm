@@ -421,6 +421,7 @@ model WorkflowActionItem {
   milestoneId String
   milestone   WorkflowMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   title       String
+  description String?
   notes       String?
   status      String    @default("Todo") // Todo | InProgress | Done | Blocked
   assignedTo  String?

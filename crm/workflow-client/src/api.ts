@@ -103,6 +103,14 @@ export async function updateSOW(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/sows/${id}`, body);
   return data;
 }
+export async function suggestTrackForSOW(id: string): Promise<{
+  suggestedTrackId: string;
+  trackTitle: string;
+  rationale: string;
+}> {
+  const { data } = await api.post(`/api/workflow/sow/${id}/suggest-track`);
+  return data;
+}
 
 // Comments
 export async function createComment(body: { actionItemId?: string; sowId?: string; content: string }) {

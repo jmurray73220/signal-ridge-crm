@@ -84,6 +84,11 @@ export function ActionItemDetail() {
               {item.milestone?.phase?.track?.title} · {item.milestone?.phase?.title} · {item.milestone?.title}
             </div>
             <h1 className="text-xl font-semibold mt-1">{item.title}</h1>
+            {item.description && (
+              <p className="text-sm text-text-muted mt-2 whitespace-pre-wrap max-w-2xl">
+                {item.description}
+              </p>
+            )}
             <div className="flex items-center gap-3 text-xs text-text-muted mt-2">
               {item.assignedTo && <span>Assigned: <span className="text-text-primary">{item.assignedTo}</span></span>}
               {item.dueDate && <span>Due {new Date(item.dueDate).toLocaleDateString()}</span>}

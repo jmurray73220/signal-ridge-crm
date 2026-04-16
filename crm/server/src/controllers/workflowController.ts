@@ -1,9 +1,21 @@
 import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
 import { AuthRequest } from '../types';
 import { assertClientAccess } from '../middleware/workflowAuth';
 
 const prisma = new PrismaClient();
+
+const LAYER_FRAMEWORK = `CAITIP is funded as four distinct layers, each paired to a funding vehicle:
+
+- Layer 1 — AI/ML Research Core (funded by SBIR): entity resolution methodology, multi-spectrum correlation engine, feasibility-scale research artifacts.
+- Layer 2 — Integrated Prototype (funded by Genesis at AFRL/RIGA): the prototype that assembles Layer 1 methodology into a demonstrable system with a government-facing demonstration and transition plan.
+- Layer 3 — Operator-Facing Tools (funded by AFWERX): Hunt Chat, Response Packaging automation, mission planning workflow for AFCYBER operators. Workflow-first, Execution-Gap framing.
+- Layer 4 — Commercial Platform (funded by DIU): commercial platform adaptation for DoD use — geospatial interface, SaaS deployment, government-hardened instance. Requires a DoD transition partner.
+
+A separate "CYBERCOM / AFCYBER Relationship Development" track is not a funding vehicle — it exists for transition-customer relationship building, letters of interest, and deterrence-framed briefings. If a SOW is about relationship building, introductory briefings, letters of interest, or deterrence framing (not an R&D deliverable), that is the correct track.
+
+A "Master Execution Timeline" track exists for cross-cutting 180-day execution planning. A SOW should only be assigned there if it is explicitly a timeline/coordination document, not a scoped deliverable.`;
 
 // ─── Clients ──────────────────────────────────────────────────────────────
 
@@ -593,6 +605,92 @@ export async function listWorkflowUsers(req: AuthRequest, res: Response) {
     return res.json(users);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── AI: suggest track for a SOW ──────────────────────────────────────────
+
+export async function suggestTrackForSOW(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  try {
+    const sow = await prisma.workflowSOW.findUnique({ where: { id } });
+    if (!sow) return res.status(404).json({ error: 'SOW not found' });
+    if (!assertClientAccess(req, sow.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    const tracks = await prisma.workflowTrack.findMany({
+      where: { workflowClientId: sow.workflowClientId },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        fundingVehicle: true,
+      },
+    });
+
+    if (tracks.length === 0) {
+      return res.status(400).json({ error: 'No tracks exist for this client' });
+    }
+
+    const trackList = tracks
+      .map((t) =>
+        `- id: ${t.id}\n  title: ${t.title}\n  fundingVehicle: ${t.fundingVehicle ?? '—'}\n  description: ${t.description ?? '—'}`
+      )
+      .join('\n\n');
+
+    const systemPrompt = `You are a defense acquisition analyst at Signal Ridge Strategies. Your job is to assign a Statement of Work to the correct funding track based on the Layer 1-4 differentiation framework.
+
+${LAYER_FRAMEWORK}
+
+You will be shown a SOW (title + markdown content) and the list of available tracks for this client. Pick the single best-fit track and explain the reasoning in 2-3 sentences. Base the decision on which layer the SOW actually scopes — not on any incidental keywords. If the SOW is a placeholder or stub that explicitly names a layer, trust that signal.
+
+Respond ONLY as minified JSON on a single line with exactly these keys: {"suggestedTrackId":"<id>","rationale":"<2-3 sentences>"}. No prose outside the JSON. No code fences.`;
+
+    const userPrompt = `Available tracks for this client:\n\n${trackList}\n\n---\n\nSOW title: ${sow.title}\n\nSOW content:\n${sow.content || '(empty)'}\n\nReturn the JSON now.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((b: any) => b.type === 'text') as { type: 'text'; text: string } | undefined;
+    const raw = textBlock?.text?.trim() || '';
+
+    // Be tolerant of code fences / minor formatting
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[suggest-track] Unparseable response:', raw);
+      return res.status(502).json({ error: 'AI returned unparseable response' });
+    }
+    let parsed: { suggestedTrackId?: string; rationale?: string };
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(502).json({ error: 'AI returned invalid JSON' });
+    }
+
+    const suggested = tracks.find((t) => t.id === parsed.suggestedTrackId);
+    if (!suggested) {
+      return res.status(502).json({
+        error: 'AI returned an unknown track id',
+        raw: parsed,
+      });
+    }
+
+    return res.json({
+      suggestedTrackId: suggested.id,
+      trackTitle: suggested.title,
+      rationale: parsed.rationale || '',
+    });
+  } catch (err: any) {
+    console.error('[suggest-track]', err);
+    return res.status(500).json({ error: err?.message || 'Server error' });
   }
 }
 

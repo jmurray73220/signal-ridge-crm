@@ -212,10 +212,13 @@ function ActionRow({ item }: { item: WorkflowActionItem }) {
   return (
     <Link
       to={`/action-items/${item.id}`}
-      className="flex items-center justify-between gap-3 p-2 rounded hover:bg-surface-alt border border-transparent hover:border-border"
+      className="flex items-start justify-between gap-3 p-2 rounded hover:bg-surface-alt border border-transparent hover:border-border"
     >
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <div className="text-sm">{item.title}</div>
+        {item.description && (
+          <div className="text-xs text-text-muted mt-0.5 line-clamp-2">{item.description}</div>
+        )}
         <div className="flex items-center gap-2 mt-0.5 text-xs text-text-muted">
           {item.assignedTo && <span>@{item.assignedTo}</span>}
           {item.dueDate && <span>Due {new Date(item.dueDate).toLocaleDateString()}</span>}

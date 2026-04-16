@@ -48,6 +48,8 @@ router.get('/sows/:id', ctl.getSOW);
 router.post('/sows', requireWorkflowAdmin, ctl.createSOW);
 router.put('/sows/:id', requireWorkflowAdmin, ctl.updateSOW);
 router.delete('/sows/:id', requireWorkflowAdmin, ctl.deleteSOW);
+// Alias per spec
+router.post('/sow/:id/suggest-track', requireWorkflowAdmin, ctl.suggestTrackForSOW);
 
 // Comments — Editors & Admins can post; Viewers read-only
 router.post('/comments', requireWorkflowEditor, ctl.createComment);
