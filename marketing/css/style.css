@@ -83,28 +83,35 @@ section {
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   font-family: 'Inter', sans-serif;
   font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 0.02em;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border: 1.5px solid var(--accent);
-  display: flex;
+.brand:hover { color: var(--accent); }
+
+.nav-login {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  color: var(--text-primary) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
 }
+.nav-login:hover {
+  border-color: var(--accent);
+  color: var(--accent) !important;
+  background: rgba(201, 168, 76, 0.05);
+}
+.nav-login::after { display: none !important; }
 
 .nav-links {
   display: flex;
@@ -180,12 +187,13 @@ section {
 /* ─── Hero ────────────────────────────────────────────────────────── */
 .hero {
   position: relative;
-  min-height: 640px;
+  min-height: 680px;
   display: flex;
-  align-items: center;
-  padding: 120px 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 120px 0 80px;
   background-image:
-    linear-gradient(180deg, rgba(10, 22, 40, 0.78) 0%, rgba(10, 22, 40, 0.92) 100%),
+    linear-gradient(180deg, rgba(10, 22, 40, 0.40) 0%, rgba(10, 22, 40, 0.30) 50%, rgba(10, 22, 40, 0.75) 100%),
     url('../images/hero.jpg');
   background-size: cover;
   background-position: center;
@@ -197,39 +205,68 @@ section {
   margin: 0 auto;
   padding: 0 24px;
   text-align: center;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-tagline {
+  max-width: 880px;
+  margin: 64px auto 0;
+  padding: 0 24px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(232, 234, 237, 0.72);
+  text-align: center;
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 768px) {
+  .hero-tagline {
+    margin-top: 48px;
+    font-size: 12px;
+  }
 }
 
 .hero-eyebrow {
   display: inline-block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   padding: 6px 14px;
-  border: 1px solid rgba(201, 168, 76, 0.3);
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  background: rgba(10, 22, 40, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .hero h1 {
-  font-size: clamp(2.25rem, 5vw, 3.75rem);
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 4.5vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
   margin-bottom: 24px;
+  text-shadow: 0 2px 24px rgba(10, 22, 40, 0.6);
 }
 
 .hero h1 .accent {
   color: var(--accent);
+  font-weight: 700;
 }
 
 .hero p {
-  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
-  color: var(--text-secondary);
-  max-width: 680px;
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+  color: rgba(232, 234, 237, 0.88);
+  max-width: 640px;
   margin: 0 auto 40px;
-  line-height: 1.65;
+  line-height: 1.7;
+  text-shadow: 0 1px 16px rgba(10, 22, 40, 0.5);
 }
 
 .hero-cta {
@@ -354,9 +391,14 @@ section {
 /* ─── Services ────────────────────────────────────────────────────── */
 .services-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 24px;
-  margin-top: 48px;
+  max-width: 880px;
+  margin: 48px auto 0;
+}
+
+@media (max-width: 640px) {
+  .services-grid { grid-template-columns: 1fr; }
 }
 
 .service-card {
@@ -538,44 +580,100 @@ section {
   font-weight: 600;
 }
 
+/* About page — two-column bio + photo collage ─────────────────────── */
 .bio {
-  max-width: 860px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 80px 24px;
 }
 
-.bio p {
-  font-size: 1.1rem;
+.bio-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+}
+
+.bio-copy p {
+  font-size: 1.05rem;
   line-height: 1.85;
   color: var(--text-primary);
   margin-bottom: 28px;
 }
-
-.bio p:last-child { margin-bottom: 0; }
+.bio-copy p:last-child { margin-bottom: 0; }
 
 .bio-photos {
+  position: sticky;
+  top: 96px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 56px 0;
+  grid-template-columns: 1.2fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+}
+
+.bio-wide-photo {
+  margin-top: 48px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.bio-wide-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 0.5s ease;
+}
+.bio-wide-photo:hover img { transform: scale(1.02); }
+
+@media (max-width: 900px) {
+  .bio-wide-photo { margin-top: 32px; }
 }
 
 .bio-photo {
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: var(--bg-secondary);
-  aspect-ratio: 3/4;
+  position: relative;
+}
+
+/* First photo spans full height on the left (hero portrait) */
+.bio-photo--tall {
+  grid-row: 1 / span 2;
+  aspect-ratio: auto;
+  min-height: 100%;
+}
+
+/* Right column — two stacked squares */
+.bio-photo--square {
+  aspect-ratio: 1/1;
 }
 
 .bio-photo img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center top;
-  transition: transform 0.4s ease;
+  object-position: center 20%;
+  transition: transform 0.5s ease;
 }
 
-.bio-photo:hover img { transform: scale(1.03); }
+.bio-photo:hover img { transform: scale(1.04); }
+
+@media (max-width: 900px) {
+  .bio-layout {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .bio-photos {
+    position: static;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: auto;
+  }
+  .bio-photo--tall {
+    grid-row: auto;
+    aspect-ratio: 1/1;
+  }
+}
 
 /* ─── Footer ──────────────────────────────────────────────────────── */
 .footer {
