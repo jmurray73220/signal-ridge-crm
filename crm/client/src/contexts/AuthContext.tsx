@@ -40,7 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await authApi.logout();
     setUser(null);
-    window.location.href = '/login';
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    window.location.href = `${base}/login`;
   };
 
   const refetchUser = fetchUser;
