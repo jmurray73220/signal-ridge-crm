@@ -125,13 +125,18 @@ export function ContactDetail() {
               <div className="text-sm mb-2" style={{ color: '#8b949e' }}>{contact.title}</div>
             )}
             {contact.entity && (
-              <Link
-                to={`/entities/${contact.entity.id}`}
-                className="text-sm font-medium hover:opacity-80 transition-opacity"
-                style={{ color: '#c9a84c', textDecoration: 'none' }}
-              >
-                {contact.entity.name}
-              </Link>
+              <div>
+                <Link
+                  to={`/entities/${contact.entity.id}`}
+                  className="text-sm font-medium hover:opacity-80 transition-opacity"
+                  style={{ color: '#c9a84c', textDecoration: 'none' }}
+                >
+                  {contact.entity.name}
+                </Link>
+                {contact.entity.address && (
+                  <div className="text-xs mt-1" style={{ color: '#8b949e' }}>{contact.entity.address}</div>
+                )}
+              </div>
             )}
 
             {/* Contact info */}

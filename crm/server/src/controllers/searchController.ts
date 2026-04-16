@@ -23,7 +23,7 @@ export async function globalSearch(req: AuthRequest, res: Response) {
             { email: { contains: query } },
           ],
         },
-        include: { entity: { select: { id: true, name: true, entityType: true } } },
+        include: { entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } } },
         take: 10,
       }),
       prisma.entity.findMany({

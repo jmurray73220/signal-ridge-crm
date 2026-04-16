@@ -175,6 +175,10 @@ export function EntityDetail() {
               </div>
             )}
 
+            {entity.address && (
+              <div className="mt-3 text-sm" style={{ color: '#8b949e' }}>{entity.address}</div>
+            )}
+
             {entity.website && (
               <a href={entity.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm mt-3" style={{ color: '#c9a84c', textDecoration: 'none' }}>
                 <ExternalLink size={13} /> {entity.website}
