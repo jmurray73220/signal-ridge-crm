@@ -58,7 +58,9 @@ app.use('/', gmailRoutes);
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // Serve React frontend build
-const clientDistPath = path.join(__dirname, '../../client/dist');
+// Use process.cwd() so the path works in both dev (ts-node from server/)
+// and production (node dist/src/index.js run from server/)
+const clientDistPath = path.join(process.cwd(), '../client/dist');
 app.use(express.static(clientDistPath));
 
 // SPA catch-all — must come after all API routes
