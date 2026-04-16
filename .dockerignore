@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (rebuild in image)
+node_modules
+**/node_modules
+
+# Build output (rebuild in image)
+dist
+**/dist
+
+# Environment (inject via Railway env vars)
+.env
+**/.env
+*.local
+
+# Secrets
+client_secret*.json
+credentials.json
+token.json
+*.p12
+*.pem
+
+# Databases (migrated to Postgres; don't ship the SQLite files)
+*.db
+*.db.backup*
+**/*.db
+**/*.db.backup*
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor / tooling
+.claude
+.vscode
+.idea
+
+# Generated docs
+*.docx
+
+# CI / config we don't need in the image
+launch.bat
+README.md
+SRS_CRM_ClaudeCode_Instructions.md
