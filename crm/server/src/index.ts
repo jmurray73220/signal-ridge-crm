@@ -90,10 +90,14 @@ app.use(express.static(marketingPath));
 app.get('/', (_req, res) => res.sendFile(path.join(marketingPath, 'index.html')));
 app.get('/about', (_req, res) => res.sendFile(path.join(marketingPath, 'about.html')));
 
-// CRM SPA — /crm/*
+// CRM SPA at /crm — static assets first, then a regex catch-all that
+// serves index.html for any /crm or /crm/* path not already handled.
+// Regex form is explicit and version-agnostic (path-to-regexp changed
+// wildcard handling between Express 4 and 5).
 app.use('/crm', express.static(clientDistPath));
-app.get('/crm', (_req, res) => res.sendFile(path.join(clientDistPath, 'index.html')));
-app.get('/crm/*', (_req, res) => res.sendFile(path.join(clientDistPath, 'index.html')));
+app.get(/^\/crm(\/.*)?$/, (_req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
 
 app.use(errorHandler);
 
