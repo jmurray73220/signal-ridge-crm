@@ -17,6 +17,11 @@ token.json
 # Database
 *.db
 *.db-journal
+*.db.backup*
+crm/server/prisma/prisma/
+
+# Generated documents
+*.docx
 
 # Logs
 *.log
