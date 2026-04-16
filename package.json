@@ -1,0 +1,7 @@
+{
+  "name": "signal-ridge-crm-monorepo",
+  "version": "1.0.0",
+  "engines": {
+    "node": "22"
+  }
+}
