@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { tasksApi, contactsApi, entitiesApi, initiativesApi } from '../api';
-import type { Task, Entity, Contact } from '../types';
+import type { Task, Entity } from '../types';
 import toast from 'react-hot-toast';
 
 interface Props {

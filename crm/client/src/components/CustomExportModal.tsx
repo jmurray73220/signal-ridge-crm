@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Download } from 'lucide-react';
-import { entitiesApi, contactsApi, exportApi } from '../api';
+import { entitiesApi, contactsApi } from '../api';
 import toast from 'react-hot-toast';
 import type { Entity } from '../types';
 

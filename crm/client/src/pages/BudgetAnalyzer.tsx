@@ -9,7 +9,6 @@ import {
   Link2,
   Loader2,
   X,
-  ChevronDown,
   AlertTriangle,
   Check,
   Plus,
@@ -20,7 +19,7 @@ import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { budgetApi, reportTemplateApi, entitiesApi } from '../api';
-import type { BudgetDocument, ChatMessage, Entity, ReportTemplate } from '../types';
+import type { BudgetDocument, ChatMessage, Entity } from '../types';
 
 // ─── Client Selector ────────────────────────────────────────────────────────
 

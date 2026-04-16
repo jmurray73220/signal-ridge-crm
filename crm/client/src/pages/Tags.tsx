@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Tag, X, Users, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Users, Building2 } from 'lucide-react';
 import { contactsApi, entitiesApi } from '../api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';

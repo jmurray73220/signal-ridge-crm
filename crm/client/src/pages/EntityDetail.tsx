@@ -255,8 +255,6 @@ export function EntityDetail() {
           c.entity?.entityType !== 'CongressionalOffice'
         );
 
-        const totalPeopleCount = contacts.length + (isClient ? taggedContacts.length : 0);
-
         return (
           <>
             {/* Tabs */}

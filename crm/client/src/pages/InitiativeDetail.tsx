@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Edit2, Trash2, MessageSquare, Users,
-  Building2, CheckSquare, Plus, X, ExternalLink, GripVertical
+  ArrowLeft, Edit2, Trash2, MessageSquare,
+  Building2, CheckSquare, Plus, X, ExternalLink
 } from 'lucide-react';
-import { initiativesApi, contactsApi, entitiesApi, tasksApi, settingsApi } from '../api';
+import { initiativesApi, contactsApi, entitiesApi, tasksApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { InitiativeModal } from '../components/InitiativeModal';
@@ -13,8 +13,6 @@ import { LogInteractionModal } from '../components/LogInteractionModal';
 import { InitiativeContactsTab } from '../components/InitiativeContactsTab';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
-
-const CONTACT_ROLES = ['Champion', 'Gatekeeper', 'End User', 'Sponsor', 'Staffer Lead', 'Technical POC'];
 
 function formatDate(d?: string | null) {
   if (!d) return '—';

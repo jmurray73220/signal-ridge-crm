@@ -4,7 +4,6 @@ import { X, Loader2, Copy, ChevronRight, ChevronLeft, Download } from 'lucide-re
 import { entitiesApi, contactsApi, briefingApi } from '../api';
 import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
-import type { Entity, Contact } from '../types';
 
 interface Props {
   onClose: () => void;

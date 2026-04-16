@@ -1,9 +1,8 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus, X, GripVertical } from 'lucide-react';
 import { settingsApi, initiativesApi } from '../api';
-import { EntityTypeBadge } from './EntityTypeBadge';
 import toast from 'react-hot-toast';
 
 const CONTACT_ROLES = ['Champion', 'Gatekeeper', 'End User', 'Sponsor', 'Staffer Lead', 'Technical POC'];
@@ -52,8 +51,6 @@ interface Props {
   onRemoveContact: (contactId: string) => void;
 }
 
-type GroupKey = 'senate-majority' | 'senate-minority' | 'house-majority' | 'house-minority' | 'other';
-
 interface GroupedContact extends ContactEntry {
   contactParty: string;
   isCommitteeStaffer: boolean;
@@ -101,9 +98,6 @@ function ContactCard({
   dragging: boolean;
 }) {
   const ent = ic.contact.entity;
-  const partyAbbr = ic.contactParty === 'Democrat' ? 'Dem' : ic.contactParty === 'Republican' ? 'GOP' : '';
-  const partyColor = ic.contactParty === 'Democrat' ? '#60a5fa' : ic.contactParty === 'Republican' ? '#f87171' : '#8b949e';
-  const partyBg = ic.contactParty === 'Democrat' ? 'rgba(96,165,250,0.15)' : ic.contactParty === 'Republican' ? 'rgba(248,113,113,0.15)' : 'rgba(139,148,158,0.1)';
 
   let officeName = '';
   if (ic.isCommitteeStaffer) {

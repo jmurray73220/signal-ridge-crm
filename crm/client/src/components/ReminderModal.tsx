@@ -64,7 +64,7 @@ export function ReminderModal({ reminder, defaultContactId, defaultEntityId, def
         interactionId: form.interactionId || null,
       };
       if (reminder?.id) {
-        await remindersApi.update(reminder.id, data);
+        await remindersApi.update(reminder.id, data as any);
       } else {
         await remindersApi.create(data as any);
       }
