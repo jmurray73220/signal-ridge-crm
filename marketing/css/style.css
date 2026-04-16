@@ -18,6 +18,8 @@ body {
   background: #0a1628;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent any element from causing horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
 img {
@@ -90,6 +92,12 @@ section {
   text-transform: uppercase;
   color: var(--text-primary);
   white-space: nowrap;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .brand { font-size: 12px; letter-spacing: 0.14em; }
+  .nav-inner { padding: 14px 16px; }
 }
 
 .brand:hover { color: var(--accent); }
@@ -187,6 +195,7 @@ section {
 /* ─── Hero (stacked: full-width image, then navy content) ─────────── */
 .hero {
   display: block;
+  padding: 0; /* override the global `section { padding: 96px 0 }` */
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -198,6 +207,7 @@ section {
   max-height: 760px;
   overflow: hidden;
   background: var(--bg-secondary);
+  margin: 0;
 }
 
 .hero-image img {
@@ -243,6 +253,26 @@ section {
   .hero-tagline { font-size: 11px; max-width: 260px; padding: 12px; }
 }
 
+/* Mobile hero tweaks:
+   - show the full image with object-fit: contain so any text baked
+     into the image (brand wordmark, watermark) isn't cropped
+   - hide the absolute-positioned tagline overlay; unreadable at
+     small widths and conflicts with the contained image letterbox
+*/
+@media (max-width: 768px) {
+  .hero-image {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: 16 / 9;
+  }
+  .hero-image img {
+    object-fit: contain;
+    object-position: center;
+  }
+  .hero-tagline { display: none; }
+}
+
 .hero-eyebrow {
   display: inline-block;
   font-size: 11px;
@@ -280,13 +310,6 @@ section {
   gap: 16px;
   flex-wrap: wrap;
   margin-top: 24px;
-}
-
-.hero-cta {
-  display: inline-flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 
 /* ─── Buttons ─────────────────────────────────────────────────────── */
