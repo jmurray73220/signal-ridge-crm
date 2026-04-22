@@ -100,8 +100,12 @@ export const usersApi = {
   list: () => api.get<User[]>('/api/users'),
   create: (data: any) => api.post<User>('/api/users', data),
   updateRole: (id: string, role: string) => api.patch(`/api/users/${id}/role`, { role }),
+  updateWorkflowRole: (id: string, body: { workflowRole: string | null; workflowClientId: string | null }) =>
+    api.patch(`/api/users/${id}/workflow-role`, body),
   toggleActive: (id: string, isActive: boolean) =>
     api.patch(`/api/users/${id}/active`, { isActive }),
+  workflowClients: () =>
+    api.get<Array<{ id: string; name: string }>>('/api/users/workflow-clients'),
 };
 
 // Reminders
@@ -110,6 +114,41 @@ export const remindersApi = {
   create: (data: Partial<Reminder> & { remindAt: string }) => api.post<Reminder>('/api/reminders', data),
   update: (id: string, data: Partial<Reminder>) => api.put<Reminder>(`/api/reminders/${id}`, data),
   delete: (id: string) => api.delete(`/api/reminders/${id}`),
+};
+
+// Recycle bin + change log (admin only)
+export interface RecycleBinItem {
+  id: string;
+  title: string;
+  deletedAt: string;
+  deletedByUserId: string | null;
+  purgeAt: string;
+}
+export interface RecycleBinResponse {
+  retentionDays: number;
+  items: Record<string, RecycleBinItem[]>;
+}
+export interface ChangeLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  userId: string | null;
+  user: { id: string; firstName: string; lastName: string; email: string } | null;
+  action: 'create' | 'update' | 'delete' | 'restore' | 'purge';
+  diff: { fields?: Record<string, { before: unknown; after: unknown }>; snapshot?: unknown; after?: unknown };
+  createdAt: string;
+}
+export const recycleBinApi = {
+  list: () => api.get<RecycleBinResponse>('/api/recycle-bin'),
+  restore: (entityType: string, id: string) =>
+    api.post(`/api/recycle-bin/${entityType}/${id}/restore`),
+  purge: (entityType: string, id: string) =>
+    api.delete(`/api/recycle-bin/${entityType}/${id}`),
+  purgeOld: () => api.post<{ purged: number; olderThanDays: number }>('/api/recycle-bin/purge-old'),
+};
+export const changelogApi = {
+  list: (entityType: string, entityId: string) =>
+    api.get<ChangeLogEntry[]>('/api/changelog', { params: { entityType, entityId } }),
 };
 
 // Export

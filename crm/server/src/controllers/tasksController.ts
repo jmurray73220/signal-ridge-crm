@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 export async function getTasks(req: AuthRequest, res: Response) {
   const { contactId, entityId, initiativeId, completed } = req.query;
@@ -88,9 +87,18 @@ export async function updateTask(req: AuthRequest, res: Response) {
 export async function deleteTask(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.task.delete({ where: { id } });
-    return res.json({ message: 'Task deleted' });
+    const existing = await prisma.task.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'task',
+      entityType: 'Task',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Task moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteTask]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

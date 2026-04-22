@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../middleware/auth';
 import {
@@ -16,7 +16,6 @@ import {
 import { AuthRequest } from '../types';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ─── OAuth (unprotected) ─────────────────────────────────────────────────────
 

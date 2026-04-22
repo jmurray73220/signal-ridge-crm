@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 const reminderInclude = {
   contact: { select: { id: true, firstName: true, lastName: true } },
@@ -94,10 +93,18 @@ export async function updateReminder(req: AuthRequest, res: Response) {
 export async function deleteReminder(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.reminder.delete({ where: { id } });
-    return res.json({ message: 'Reminder deleted' });
+    const existing = await prisma.reminder.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'reminder',
+      entityType: 'Reminder',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Reminder moved to recycle bin' });
   } catch (err) {
-    console.error(err);
+    console.error('[deleteReminder]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

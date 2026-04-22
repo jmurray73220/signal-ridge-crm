@@ -24,6 +24,10 @@ export async function listClients() {
   const { data } = await api.get('/api/workflow/clients');
   return data;
 }
+export async function listCrmClientEntities(): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await api.get('/api/workflow/clients/crm-entities');
+  return data;
+}
 export async function createClient(name: string, clientId?: string) {
   const { data } = await api.post('/api/workflow/clients', { name, clientId });
   return data;
@@ -48,8 +52,13 @@ export async function updateTrack(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/tracks/${id}`, body);
   return data;
 }
+export async function getTrack(id: string) {
+  const { data } = await api.get(`/api/workflow/tracks/${id}`);
+  return data;
+}
 export async function deleteTrack(id: string) {
-  await api.delete(`/api/workflow/tracks/${id}`);
+  // Use the singular alias per spec — server accepts both paths
+  await api.delete(`/api/workflow/track/${id}`);
 }
 
 // Phases
@@ -103,12 +112,41 @@ export async function updateSOW(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/sows/${id}`, body);
   return data;
 }
-export async function suggestTrackForSOW(id: string): Promise<{
-  suggestedTrackId: string;
-  trackTitle: string;
-  rationale: string;
-}> {
-  const { data } = await api.post(`/api/workflow/sow/${id}/suggest-track`);
+export async function deleteSOW(id: string) {
+  await api.delete(`/api/workflow/sows/${id}`);
+}
+export interface SOWOverlap {
+  sowId: string;
+  sowTitle: string;
+  trackTitle: string | null;
+  reason: string;
+}
+export async function checkSOWOverlap(body: {
+  workflowClientId: string;
+  excludeSowId?: string;
+  title?: string;
+  scope?: string;
+  deliverables?: string[];
+  targetAgency?: string;
+  targetFundingVehicle?: string;
+}): Promise<{ overlaps: SOWOverlap[] }> {
+  const { data } = await api.post('/api/workflow/sows/check-overlap', body);
+  return data;
+}
+export async function integrateSOWWithTrack(sowId: string, trackId: string) {
+  const { data } = await api.post(`/api/workflow/sow/${sowId}/integrate/${trackId}`);
+  return data;
+}
+
+export interface Assignee {
+  kind: 'contact' | 'user';
+  id: string;
+  name: string;
+  email: string | null;
+  subtitle: string;
+}
+export async function listAssignees(workflowClientId: string): Promise<Assignee[]> {
+  const { data } = await api.get(`/api/workflow/clients/${workflowClientId}/assignees`);
   return data;
 }
 

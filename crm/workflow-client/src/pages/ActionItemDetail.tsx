@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, User } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getActionItem, updateActionItem, createComment } from '../api';
+import { getActionItem, updateActionItem, createComment, listAssignees } from '../api';
+import type { Assignee } from '../api';
 import { useAuth } from '../AuthContext';
 import { StatusBadge } from './Dashboard';
 
@@ -18,6 +19,15 @@ export function ActionItemDetail() {
     queryKey: ['action-item', id],
     queryFn: () => getActionItem(id!),
     enabled: !!id,
+  });
+
+  const workflowClientId: string | undefined =
+    item?.milestone?.phase?.track?.workflowClientId;
+
+  const { data: assignees = [] } = useQuery<Assignee[]>({
+    queryKey: ['assignees', workflowClientId],
+    queryFn: () => listAssignees(workflowClientId!),
+    enabled: !!workflowClientId && canEdit,
   });
 
   const [saving, setSaving] = useState(false);
@@ -57,6 +67,16 @@ export function ActionItemDetail() {
     }
   }
 
+  async function setAssignedTo(value: string | null) {
+    try {
+      await updateActionItem(id!, { assignedTo: value });
+      toast.success(value ? 'Assigned' : 'Unassigned');
+      qc.invalidateQueries({ queryKey: ['action-item', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
   async function postComment() {
     if (!newComment.trim()) return;
     try {
@@ -90,7 +110,11 @@ export function ActionItemDetail() {
               </p>
             )}
             <div className="flex items-center gap-3 text-xs text-text-muted mt-2">
-              {item.assignedTo && <span>Assigned: <span className="text-text-primary">{item.assignedTo}</span></span>}
+              {item.assignedTo && (
+                <span className="inline-flex items-center gap-1">
+                  <User size={12} /> <span className="text-text-primary">{item.assignedTo}</span>
+                </span>
+              )}
               {item.dueDate && <span>Due {new Date(item.dueDate).toLocaleDateString()}</span>}
             </div>
           </div>
@@ -98,23 +122,62 @@ export function ActionItemDetail() {
         </div>
 
         {canEdit && (
-          <div className="mt-4">
-            <label className="label">Status</label>
-            <div className="flex gap-2 flex-wrap">
-              {STATUSES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  disabled={saving}
-                  className={`px-3 py-1 rounded text-xs border transition-colors ${
-                    item.status === s
-                      ? 'bg-accent text-bg border-accent'
-                      : 'border-border text-text-muted hover:border-accent hover:text-accent'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Status</label>
+              <div className="flex gap-2 flex-wrap">
+                {STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatus(s)}
+                    disabled={saving}
+                    className={`px-3 py-1 rounded text-xs border transition-colors ${
+                      item.status === s
+                        ? 'bg-accent text-bg border-accent'
+                        : 'border-border text-text-muted hover:border-accent hover:text-accent'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="label">Assigned to</label>
+              <select
+                className="input"
+                value={item.assignedTo || ''}
+                onChange={(e) => setAssignedTo(e.target.value || null)}
+              >
+                <option value="">— Unassigned —</option>
+                {assignees.filter((a) => a.kind === 'contact').length > 0 && (
+                  <optgroup label="Shadowgrid contacts">
+                    {assignees
+                      .filter((a) => a.kind === 'contact')
+                      .map((a) => (
+                        <option key={`c-${a.id}`} value={a.name}>
+                          {a.name}{a.subtitle ? ` — ${a.subtitle}` : ''}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {assignees.filter((a) => a.kind === 'user').length > 0 && (
+                  <optgroup label="Signal Ridge team">
+                    {assignees
+                      .filter((a) => a.kind === 'user')
+                      .map((a) => (
+                        <option key={`u-${a.id}`} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+              </select>
+              {assignees.length === 0 && (
+                <div className="text-xs text-text-muted mt-1">
+                  No contacts found. Link contacts to the Shadowgrid Entity in the CRM.
+                </div>
+              )}
             </div>
           </div>
         )}

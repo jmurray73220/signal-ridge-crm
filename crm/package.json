@@ -2,11 +2,12 @@
   "name": "signal-ridge-crm",
   "version": "1.0.0",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "concurrently -n server,crm,workflow -c blue,green,magenta \"npm run dev:server\" \"npm run dev:client\" \"npm run dev:workflow\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "dev:workflow": "cd workflow-client && npm run dev",
     "setup": "cd server && npm install && npx prisma migrate dev --name init && npm run db:seed",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm run build && cd ../workflow-client && npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

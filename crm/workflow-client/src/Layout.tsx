@@ -1,11 +1,13 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutGrid, FileText, Shield, LogOut } from 'lucide-react';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Settings, LogOut } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { useClientContext } from './ClientContext';
 
 export function Layout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const isAdmin = user?.workflowRole === 'WorkflowAdmin';
+  const { clients, selectedClientId, setSelectedClientId, canSwitch } = useClientContext();
 
   async function handleLogout() {
     await logout();
@@ -28,17 +30,35 @@ export function Layout() {
             </div>
           </Link>
 
-          <nav className="flex items-center gap-1">
-            <NavItem to="/" icon={<LayoutGrid size={16} />} label="Tracks" end />
-            <NavItem to="/sows" icon={<FileText size={16} />} label="SOWs" />
-            {isAdmin && <NavItem to="/admin" icon={<Shield size={16} />} label="Admin" />}
-          </nav>
-
           <div className="flex items-center gap-4">
+            {canSwitch && clients.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted uppercase tracking-wider">Viewing</span>
+                <select
+                  value={selectedClientId || ''}
+                  onChange={e => setSelectedClientId(e.target.value || null)}
+                  className="bg-surface border border-border text-sm rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent"
+                >
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="text-right">
               <div className="text-sm">{user?.firstName} {user?.lastName}</div>
               <div className="text-xs text-text-muted">{user?.workflowRole}</div>
             </div>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="btn-ghost p-1.5 rounded hover:text-accent"
+                title="Admin"
+                aria-label="Admin"
+              >
+                <Settings size={16} />
+              </Link>
+            )}
             <button onClick={handleLogout} className="btn-ghost flex items-center gap-1">
               <LogOut size={14} /> Logout
             </button>
@@ -57,19 +77,3 @@ export function Layout() {
   );
 }
 
-function NavItem({ to, icon, label, end }: { to: string; icon: React.ReactNode; label: string; end?: boolean }) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        `flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-colors ${
-          isActive ? 'bg-surface text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface'
-        }`
-      }
-    >
-      {icon}
-      {label}
-    </NavLink>
-  );
-}

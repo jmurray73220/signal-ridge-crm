@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 export async function getContacts(req: AuthRequest, res: Response) {
   const { entity, tag, name, rank, search } = req.query;
@@ -140,6 +139,8 @@ export async function updateContact(req: AuthRequest, res: Response) {
   const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, entityId } = req.body;
 
   try {
+    const before = await prisma.contact.findUnique({ where: { id } });
+    if (!before || before.deletedAt) return res.status(404).json({ error: 'Not found' });
     const contact = await prisma.contact.update({
       where: { id },
       data: {
@@ -159,6 +160,13 @@ export async function updateContact(req: AuthRequest, res: Response) {
       },
       include: { entity: { select: { id: true, name: true, entityType: true } } },
     });
+    await logUpdate({
+      entityType: 'Contact',
+      id,
+      userId: req.user?.userId || null,
+      before: before as unknown as Record<string, unknown>,
+      after: contact as unknown as Record<string, unknown>,
+    });
     return res.json({ ...contact, tags: JSON.parse(contact.tags || '[]') });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
@@ -168,9 +176,18 @@ export async function updateContact(req: AuthRequest, res: Response) {
 export async function deleteContact(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.contact.delete({ where: { id } });
-    return res.json({ message: 'Contact deleted' });
+    const existing = await prisma.contact.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'contact',
+      entityType: 'Contact',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Contact moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteContact]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

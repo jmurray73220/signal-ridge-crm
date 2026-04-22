@@ -2,10 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
 import { AuthRequest, JwtPayload } from '../types';
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-prod';
 const JWT_EXPIRES_IN = '8h';
 

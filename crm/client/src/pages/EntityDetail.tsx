@@ -12,6 +12,7 @@ import { EntityModal } from '../components/EntityModal';
 import { ContactModal } from '../components/ContactModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
+import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import type { Entity, InitiativeStatus, InitiativePriority } from '../types';
@@ -647,12 +648,14 @@ export function EntityDetail() {
         />
       )}
 
+      <ChangeLogPanel entityType="Entity" entityId={entity.id} />
+
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="rounded-xl p-6 max-w-sm w-full" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
             <h3 className="text-base font-semibold mb-2" style={{ color: '#e6edf3' }}>Delete Organization?</h3>
             <p className="text-sm mb-6" style={{ color: '#8b949e' }}>
-              This will permanently delete {entity.name} and all associated data.
+              {entity.name} will be moved to the recycle bin. Admins can restore within 90 days from Settings → Recycle Bin.
             </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="btn-secondary">Cancel</button>

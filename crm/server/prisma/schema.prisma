@@ -48,6 +48,9 @@ model User {
   workflowSOWsCreated        WorkflowSOW[]        @relation("WorkflowSOWCreatedBy")
   workflowSOWVersionsCreated WorkflowSOWVersion[] @relation("WorkflowSOWVersionCreatedBy")
   workflowCommentsCreated    WorkflowComment[]    @relation("WorkflowCommentCreatedBy")
+
+  // Change log author
+  changeLogEntries ChangeLog[] @relation("ChangeLogUser")
 }
 
 model Contact {
@@ -65,6 +68,10 @@ model Contact {
   tags        String  @default("[]") // JSON array stored as string in SQLite
   entityId    String?
   entity      Entity? @relation(fields: [entityId], references: [id])
+
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
 
   // Audit trail
   createdByUserId String?
@@ -111,6 +118,10 @@ model Entity {
   contractVehicles      String? @default("[]") // JSON array
   capabilityDescription String?
 
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   // Audit trail
   createdByUserId String?
   updatedByUserId String?
@@ -139,6 +150,10 @@ model Initiative {
   targetDate      DateTime?
   primaryEntityId String?
   primaryEntity   Entity? @relation("PrimaryEntity", fields: [primaryEntityId], references: [id])
+
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
 
   // Audit trail
   createdByUserId String?
@@ -191,6 +206,10 @@ model Interaction {
   initiativeId   String?
   initiative     Initiative? @relation(fields: [initiativeId], references: [id])
 
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   // Audit trail
   createdByUserId String?
   updatedByUserId String?
@@ -227,6 +246,10 @@ model Task {
   entity     Entity?     @relation(fields: [entityId], references: [id])
   initiative Initiative? @relation(fields: [initiativeId], references: [id])
 
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   // Audit trail
   createdByUserId String?
   updatedByUserId String?
@@ -255,6 +278,10 @@ model Reminder {
   initiative   Initiative?  @relation(fields: [initiativeId], references: [id])
   interaction  Interaction? @relation(fields: [interactionId], references: [id])
 
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   createdByUserId String?
   updatedByUserId String?
   createdBy       User?   @relation("ReminderCreatedBy", fields: [createdByUserId], references: [id])
@@ -262,6 +289,32 @@ model Reminder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── Audit: Change Log ───────────────────────────────────────────────────────
+//
+// Polymorphic append-only log of every create/update/delete across the core
+// CRM and workflow models. Admin-only visibility in the UI. `entityType` is
+// a free string (e.g. "Contact", "Entity", "WorkflowTrack") so we can add new
+// tracked types without another migration. `diff` stores a JSON object whose
+// shape depends on `action`:
+//   - create: { after: <full-record-snapshot> }
+//   - update: { fields: { <name>: { before, after } } }
+//   - delete: { snapshot: <full-record-at-delete-time> }
+//   - restore / purge: {}
+
+model ChangeLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  userId     String?
+  user       User?    @relation("ChangeLogUser", fields: [userId], references: [id])
+  action     String   // create | update | delete | restore | purge
+  diff       String   @default("{}") // JSON string
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 // ─── CRM Settings ────────────────────────────────────────────────────────────
@@ -380,8 +433,17 @@ model WorkflowTrack {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // Mirror into CRM Initiative (soft link — not FK so the workflow tool stays
+  // decoupled from CRM table changes). Tracks create a companion Initiative in
+  // the CRM with primaryEntity = the workflow client's CRM Entity.
+  initiativeId     String?
+
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   phases WorkflowPhase[]
-  sows   WorkflowSOW[]
+  sow    WorkflowSOW?
 }
 
 model WorkflowPhase {
@@ -431,6 +493,10 @@ model WorkflowActionItem {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
+
   createdByUserId String?
   updatedByUserId String?
   createdBy       User?   @relation("WorkflowActionItemCreatedBy", fields: [createdByUserId], references: [id])
@@ -440,32 +506,50 @@ model WorkflowActionItem {
 }
 
 model WorkflowSOW {
-  id               String   @id @default(uuid())
-  workflowClientId String
-  workflowClient   WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
-  trackId          String?
-  track            WorkflowTrack? @relation(fields: [trackId], references: [id])
-  title            String
-  content          String   @default("")
-  version          Int      @default(1)
-  status           String   @default("Draft") // Draft | Active | Archived
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  workflowClientId      String
+  workflowClient        WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
+  // One optional SOW per track (unique enforces at-most-one).
+  trackId               String?  @unique
+  track                 WorkflowTrack? @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  title                 String
+  // Structured fields
+  targetFundingVehicle  String?
+  targetAgency          String?
+  periodOfPerformance   String?
+  budget                String?
+  differentiationLayer  String?  // Layer1 | Layer2 | Layer3 | Layer4 | CrossLayer
+  trlStatement          String?
+  scope                 String   @default("")           // Rich text / markdown narrative
+  keyPersonnel          String   @default("")
+  deliverables          String   @default("[]")         // JSON array of strings
+  draftingChecklist     String   @default("[]")         // JSON array of {id,title,done}
+  // Legacy free-form content kept for backfill; new UI uses `scope` instead.
+  content               String   @default("")
+  version               Int      @default(1)
+  status                String   @default("Draft")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Soft delete
+  deletedAt       DateTime?
+  deletedByUserId String?
 
   createdByUserId String?
   createdBy       User?   @relation("WorkflowSOWCreatedBy", fields: [createdByUserId], references: [id])
 
-  versions WorkflowSOWVersion[]
-  comments WorkflowComment[]
+  versions         WorkflowSOWVersion[]
+  comments         WorkflowComment[]
 }
 
 model WorkflowSOWVersion {
-  id        String   @id @default(uuid())
-  sowId     String
-  sow       WorkflowSOW @relation(fields: [sowId], references: [id], onDelete: Cascade)
-  content   String
-  version   Int
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  sowId        String
+  sow          WorkflowSOW @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  content      String
+  snapshotJson String   @default("{}") // Full structured-field snapshot at this version
+  version      Int
+  createdAt    DateTime @default(now())
 
   createdByUserId String?
   createdBy       User?   @relation("WorkflowSOWVersionCreatedBy", fields: [createdByUserId], references: [id])

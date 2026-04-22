@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 export async function getInteractions(req: AuthRequest, res: Response) {
   const { type, entityId, contactId, initiativeId, from, to } = req.query;
@@ -133,9 +132,18 @@ export async function updateInteraction(req: AuthRequest, res: Response) {
 export async function deleteInteraction(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.interaction.delete({ where: { id } });
-    return res.json({ message: 'Interaction deleted' });
+    const existing = await prisma.interaction.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'interaction',
+      entityType: 'Interaction',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Interaction moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteInteraction]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

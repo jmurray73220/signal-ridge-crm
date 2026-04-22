@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 function parseEntityArrayFields(entity: any) {
   return {
@@ -160,7 +159,16 @@ export async function updateEntity(req: AuthRequest, res: Response) {
   }
 
   try {
+    const before = await prisma.entity.findUnique({ where: { id } });
+    if (!before || before.deletedAt) return res.status(404).json({ error: 'Not found' });
     const entity = await prisma.entity.update({ where: { id }, data: updateData });
+    await logUpdate({
+      entityType: 'Entity',
+      id,
+      userId: req.user?.userId || null,
+      before: before as unknown as Record<string, unknown>,
+      after: entity as unknown as Record<string, unknown>,
+    });
     return res.json(parseEntityArrayFields(entity));
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
@@ -170,9 +178,18 @@ export async function updateEntity(req: AuthRequest, res: Response) {
 export async function deleteEntity(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.entity.delete({ where: { id } });
-    return res.json({ message: 'Entity deleted' });
+    const existing = await prisma.entity.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'entity',
+      entityType: 'Entity',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Entity moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteEntity]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

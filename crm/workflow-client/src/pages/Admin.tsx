@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Users, Briefcase } from 'lucide-react';
+import { Plus, Users, Briefcase, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   listClients,
+  listCrmClientEntities,
   createClient,
   listWorkflowUsers,
   setUserWorkflowRole,
 } from '../api';
 import type { WorkflowClient } from '../types';
+import { Modal } from '../components/Modal';
 
 export function Admin() {
   const qc = useQueryClient();
@@ -51,22 +53,11 @@ export function Admin() {
 
 function ClientsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const { data } = useQuery<WorkflowClient[]>({ queryKey: ['clients'], queryFn: listClients });
-
-  async function add() {
-    const name = window.prompt('Client name?');
-    if (!name) return;
-    try {
-      await createClient(name);
-      toast.success('Client created');
-      qc.invalidateQueries({ queryKey: ['clients'] });
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed');
-    }
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <div>
-      <button className="btn-primary flex items-center gap-1 mb-4" onClick={add}>
+      <button className="btn-primary flex items-center gap-1 mb-4" onClick={() => setOpen(true)}>
         <Plus size={14} /> Add client
       </button>
       <div className="space-y-2">
@@ -85,7 +76,168 @@ function ClientsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           <div className="card text-center text-text-muted">No clients yet</div>
         )}
       </div>
+
+      {open && (
+        <AddClientModal
+          onClose={() => setOpen(false)}
+          onCreated={() => {
+            setOpen(false);
+            qc.invalidateQueries({ queryKey: ['clients'] });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function AddClientModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { data: crmClients = [], isLoading: crmLoading } = useQuery({
+    queryKey: ['crm-client-entities'],
+    queryFn: listCrmClientEntities,
+  });
+  const { data: existingWorkflowClients = [] } = useQuery<WorkflowClient[]>({
+    queryKey: ['clients'],
+    queryFn: listClients,
+  });
+
+  const [selectedCrmId, setSelectedCrmId] = useState<string>('');
+  const [customName, setCustomName] = useState('');
+  const [useCustom, setUseCustom] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const linkedCrmIds = useMemo(
+    () => new Set(existingWorkflowClients.map((c) => c.clientId).filter(Boolean) as string[]),
+    [existingWorkflowClients]
+  );
+
+  const availableCrm = useMemo(
+    () => crmClients.filter((c) => !linkedCrmIds.has(c.id)),
+    [crmClients, linkedCrmIds]
+  );
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    let name: string;
+    let crmId: string | undefined;
+
+    if (useCustom) {
+      if (!customName.trim()) {
+        toast.error('Enter a client name');
+        return;
+      }
+      name = customName.trim();
+    } else {
+      if (!selectedCrmId) {
+        toast.error('Pick a CRM client — or switch to custom name');
+        return;
+      }
+      const match = crmClients.find((c) => c.id === selectedCrmId);
+      if (!match) {
+        toast.error('Selected client not found');
+        return;
+      }
+      name = match.name;
+      crmId = match.id;
+    }
+
+    setCreating(true);
+    try {
+      await createClient(name, crmId);
+      toast.success('Workflow client created');
+      onCreated();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <Modal title="New workflow client" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {!useCustom ? (
+          <>
+            <div>
+              <label className="label">Link to a CRM client</label>
+              {crmLoading ? (
+                <div className="text-sm text-text-muted">Loading CRM clients…</div>
+              ) : availableCrm.length === 0 ? (
+                <div className="text-sm text-text-muted">
+                  No unlinked CRM clients.{' '}
+                  {crmClients.length > 0
+                    ? 'All CRM clients already have a workflow space.'
+                    : (
+                      <>
+                        Create one in the CRM first (entity type = <span className="text-accent">Client</span>),
+                        or switch to a custom name below.
+                      </>
+                    )}
+                </div>
+              ) : (
+                <select
+                  className="input"
+                  value={selectedCrmId}
+                  onChange={(e) => setSelectedCrmId(e.target.value)}
+                >
+                  <option value="">— select a CRM client —</option>
+                  {availableCrm.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-text-muted mt-1">
+                The workflow client's name will mirror the CRM entity.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-accent underline"
+              onClick={() => setUseCustom(true)}
+            >
+              Or enter a custom name (not linked to the CRM)
+            </button>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="label">Client name</label>
+              <input
+                className="input"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="e.g. Acme Corp"
+                autoFocus
+              />
+              <p className="text-xs text-text-muted mt-1">
+                This workflow client will not be linked to a CRM entity.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-accent underline flex items-center gap-1"
+              onClick={() => setUseCustom(false)}
+            >
+              <X size={12} /> Back to CRM picker
+            </button>
+          </>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={creating}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={creating}>
+            {creating ? 'Creating…' : 'Create client'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

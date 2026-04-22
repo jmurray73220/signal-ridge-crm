@@ -1,8 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
 
-const prisma = new PrismaClient();
 
 export async function globalSearch(req: AuthRequest, res: Response) {
   const { q } = req.query;
@@ -17,10 +16,13 @@ export async function globalSearch(req: AuthRequest, res: Response) {
       prisma.contact.findMany({
         where: {
           OR: [
-            { firstName: { contains: query } },
-            { lastName: { contains: query } },
-            { title: { contains: query } },
-            { email: { contains: query } },
+            { firstName: { contains: query, mode: 'insensitive' } },
+            { lastName: { contains: query, mode: 'insensitive' } },
+            { title: { contains: query, mode: 'insensitive' } },
+            { email: { contains: query, mode: 'insensitive' } },
+            { rank: { contains: query, mode: 'insensitive' } },
+            { bio: { contains: query, mode: 'insensitive' } },
+            { tags: { contains: query, mode: 'insensitive' } },
           ],
         },
         include: { entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } } },
@@ -29,11 +31,15 @@ export async function globalSearch(req: AuthRequest, res: Response) {
       prisma.entity.findMany({
         where: {
           OR: [
-            { name: { contains: query } },
-            { description: { contains: query } },
-            { memberName: { contains: query } },
-            { parentAgency: { contains: query } },
-            { subComponent: { contains: query } },
+            { name: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+            { memberName: { contains: query, mode: 'insensitive' } },
+            { parentAgency: { contains: query, mode: 'insensitive' } },
+            { subComponent: { contains: query, mode: 'insensitive' } },
+            { industry: { contains: query, mode: 'insensitive' } },
+            { committee: { contains: query, mode: 'insensitive' } },
+            { address: { contains: query, mode: 'insensitive' } },
+            { tags: { contains: query, mode: 'insensitive' } },
           ],
         },
         take: 10,
@@ -41,8 +47,8 @@ export async function globalSearch(req: AuthRequest, res: Response) {
       prisma.initiative.findMany({
         where: {
           OR: [
-            { title: { contains: query } },
-            { description: { contains: query } },
+            { title: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
           ],
         },
         include: { primaryEntity: { select: { id: true, name: true, entityType: true } } },

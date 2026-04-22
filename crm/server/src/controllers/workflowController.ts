@@ -1,10 +1,10 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
+import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
 import { assertClientAccess } from '../middleware/workflowAuth';
 
-const prisma = new PrismaClient();
 
 const LAYER_FRAMEWORK = `CAITIP is funded as four distinct layers, each paired to a funding vehicle:
 
@@ -31,6 +31,24 @@ export async function listClients(req: AuthRequest, res: Response) {
     return res.json(clients);
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+/**
+ * List CRM Entity records with entityType='Client' so the workflow Admin can
+ * link a new WorkflowClient to an existing CRM client record.
+ */
+export async function listCrmClientEntities(_req: AuthRequest, res: Response) {
+  try {
+    const entities = await prisma.entity.findMany({
+      where: { entityType: 'Client' },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return res.json(entities);
+  } catch (err) {
+    console.error('[listCrmClientEntities]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -146,10 +164,80 @@ export async function getTrack(req: AuthRequest, res: Response) {
     });
     if (!track) return res.status(404).json({ error: 'Not found' });
     if (!assertClientAccess(req, track.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
-    return res.json(track);
+
+    // Load the attached SOW separately (if any). Keeps this endpoint resilient
+    // to any reverse-relation quirks in the generated Prisma client.
+    const sow = await prisma.workflowSOW.findFirst({
+      where: { trackId: id },
+      select: { id: true, title: true, status: true, updatedAt: true },
+    });
+    return res.json({ ...track, sow });
   } catch (err) {
+    console.error('[getTrack]', err);
     return res.status(500).json({ error: 'Server error' });
   }
+}
+
+/**
+ * Mirror a workflow track into the CRM Initiative table so tracks show up in
+ * the CRM alongside other entity-linked work. Soft-linked (no FK) to keep the
+ * workflow tool decoupled — we store the initiative id on the track.
+ */
+async function upsertMirrorInitiative(params: {
+  track: { id: string; title: string; description: string | null; fundingVehicle: string | null; status: string; initiativeId: string | null };
+  workflowClientId: string;
+  actingUserId: string | null;
+}) {
+  const client = await prisma.workflowClient.findUnique({
+    where: { id: params.workflowClientId },
+  });
+  const primaryEntityId = client?.clientId ?? null;
+
+  const description = [params.track.fundingVehicle, params.track.description]
+    .filter((v): v is string => !!v)
+    .join('\n\n') || null;
+
+  const crmStatus =
+    params.track.status === 'Completed'
+      ? 'Closed'
+      : params.track.status === 'OnHold'
+      ? 'OnHold'
+      : 'Active';
+
+  if (params.track.initiativeId) {
+    // Try update; if it's gone (user deleted it in CRM), fall back to create.
+    const existing = await prisma.initiative.findUnique({
+      where: { id: params.track.initiativeId },
+    });
+    if (existing) {
+      await prisma.initiative.update({
+        where: { id: params.track.initiativeId },
+        data: {
+          title: params.track.title,
+          description,
+          primaryEntityId,
+          status: crmStatus,
+          ...(params.actingUserId && { updatedByUserId: params.actingUserId }),
+        },
+      });
+      return params.track.initiativeId;
+    }
+  }
+
+  const initiative = await prisma.initiative.create({
+    data: {
+      title: params.track.title,
+      description,
+      primaryEntityId,
+      status: crmStatus,
+      priority: 'Medium',
+      ...(params.actingUserId && {
+        createdByUserId: params.actingUserId,
+        updatedByUserId: params.actingUserId,
+      }),
+    },
+  });
+  return initiative.id;
 }
 
 export async function createTrack(req: AuthRequest, res: Response) {
@@ -166,8 +254,27 @@ export async function createTrack(req: AuthRequest, res: Response) {
         sortOrder: sortOrder ?? 0,
       },
     });
+
+    // Mirror into CRM Initiative
+    try {
+      const initiativeId = await upsertMirrorInitiative({
+        track: { ...track, initiativeId: null },
+        workflowClientId,
+        actingUserId: req.user?.userId || null,
+      });
+      await prisma.workflowTrack.update({
+        where: { id: track.id },
+        data: { initiativeId },
+      });
+      (track as any).initiativeId = initiativeId;
+    } catch (mirrorErr) {
+      console.error('[createTrack] initiative mirror failed:', mirrorErr);
+      // Non-fatal — track still exists
+    }
+
     return res.status(201).json(track);
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -189,6 +296,21 @@ export async function updateTrack(req: AuthRequest, res: Response) {
         ...(sortOrder !== undefined && { sortOrder }),
       },
     });
+
+    // Keep mirror initiative in sync
+    try {
+      const initiativeId = await upsertMirrorInitiative({
+        track,
+        workflowClientId: existing.workflowClientId,
+        actingUserId: req.user?.userId || null,
+      });
+      if (initiativeId !== track.initiativeId) {
+        await prisma.workflowTrack.update({ where: { id }, data: { initiativeId } });
+      }
+    } catch (mirrorErr) {
+      console.error('[updateTrack] initiative mirror failed:', mirrorErr);
+    }
+
     return res.json(track);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
@@ -197,10 +319,48 @@ export async function updateTrack(req: AuthRequest, res: Response) {
 
 export async function deleteTrack(req: AuthRequest, res: Response) {
   const { id } = req.params;
+  const userId = req.user?.userId || null;
   try {
-    await prisma.workflowTrack.delete({ where: { id } });
-    return res.json({ message: 'Deleted' });
+    const existing = await prisma.workflowTrack.findUnique({
+      where: { id },
+      include: { sow: true },
+    });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    if (!assertClientAccess(req, existing.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    // Close the mirror initiative but keep the record in CRM for audit trail.
+    if (existing.initiativeId) {
+      try {
+        await prisma.initiative.update({
+          where: { id: existing.initiativeId },
+          data: { status: 'Closed', ...(userId && { updatedByUserId: userId }) },
+        });
+      } catch (mirrorErr) {
+        console.warn('[deleteTrack] mirror close failed (initiative may already be gone):', mirrorErr);
+      }
+    }
+
+    // Soft-delete the attached SOW first, then the track.
+    if (existing.sow) {
+      await softDelete({
+        modelName: 'workflowSOW',
+        entityType: 'WorkflowSOW',
+        id: existing.sow.id,
+        userId,
+        snapshot: existing.sow as unknown as Record<string, unknown>,
+      });
+    }
+    await softDelete({
+      modelName: 'workflowTrack',
+      entityType: 'WorkflowTrack',
+      id,
+      userId,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+
+    return res.json({ message: 'Track moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteTrack]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -405,9 +565,18 @@ export async function updateActionItem(req: AuthRequest, res: Response) {
 export async function deleteActionItem(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.workflowActionItem.delete({ where: { id } });
-    return res.json({ message: 'Deleted' });
+    const existing = await prisma.workflowActionItem.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    await softDelete({
+      modelName: 'workflowActionItem',
+      entityType: 'WorkflowActionItem',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'Action item moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteActionItem]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -459,45 +628,118 @@ export async function getSOW(req: AuthRequest, res: Response) {
   }
 }
 
+const STRUCTURED_FIELDS = [
+  'title',
+  'targetFundingVehicle',
+  'targetAgency',
+  'periodOfPerformance',
+  'budget',
+  'differentiationLayer',
+  'trlStatement',
+  'scope',
+  'keyPersonnel',
+  'deliverables',      // JSON string
+  'draftingChecklist', // JSON string
+  'status',
+] as const;
+
+type StructuredField = typeof STRUCTURED_FIELDS[number];
+
+function buildSnapshot(sow: any): string {
+  const snap: Record<string, unknown> = {};
+  for (const f of STRUCTURED_FIELDS) snap[f] = sow[f];
+  return JSON.stringify(snap);
+}
+
+async function validateTrackForSOW(
+  trackId: string,
+  workflowClientId: string,
+  sowIdToExclude?: string,
+): Promise<string | null> {
+  const track = await prisma.workflowTrack.findUnique({
+    where: { id: trackId },
+    include: { sow: { select: { id: true } } },
+  });
+  if (!track) return 'Track not found';
+  if (track.workflowClientId !== workflowClientId) return 'Track belongs to a different client';
+  if (track.sow && track.sow.id !== sowIdToExclude) {
+    return 'This track already has a SOW — detach it first or pick another track';
+  }
+  return null;
+}
+
 export async function createSOW(req: AuthRequest, res: Response) {
-  const { workflowClientId, trackId, title, content, status } = req.body;
+  const { workflowClientId, title, trackId } = req.body;
   if (!workflowClientId || !title) return res.status(400).json({ error: 'workflowClientId and title required' });
   try {
+    if (trackId) {
+      const err = await validateTrackForSOW(trackId, workflowClientId);
+      if (err) return res.status(400).json({ error: err });
+    }
+    const data: any = {
+      workflowClientId,
+      title,
+      version: 1,
+      status: 'Draft',
+      createdByUserId: req.user!.userId,
+      ...(trackId && { trackId }),
+    };
+    for (const f of STRUCTURED_FIELDS) {
+      if (f === 'title' || f === 'status') continue;
+      if (req.body[f] !== undefined) data[f] = req.body[f];
+    }
+    if (req.body.status) data.status = req.body.status;
     const sow = await prisma.workflowSOW.create({
-      data: {
-        workflowClientId,
-        trackId: trackId || null,
-        title,
-        content: content || '',
-        version: 1,
-        status: status || 'Draft',
-        createdByUserId: req.user!.userId,
-      },
+      data,
+      include: { track: { select: { id: true, title: true } } },
     });
     return res.status(201).json(sow);
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
 
 export async function updateSOW(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, content, trackId, status } = req.body;
   try {
     const existing = await prisma.workflowSOW.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
     if (!assertClientAccess(req, existing.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
 
-    // If content changes, snapshot the prior version and bump version number.
-    const contentChanged = content !== undefined && content !== existing.content;
-    let nextVersion = existing.version;
+    // Optional track reassignment — supports {trackId: null} to detach.
+    let trackChange: { trackId: string | null } | null = null;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'trackId')) {
+      const nextTrackId = req.body.trackId;
+      if (nextTrackId === null || nextTrackId === '') {
+        trackChange = { trackId: null };
+      } else if (typeof nextTrackId === 'string' && nextTrackId !== existing.trackId) {
+        const err = await validateTrackForSOW(nextTrackId, existing.workflowClientId, existing.id);
+        if (err) return res.status(400).json({ error: err });
+        trackChange = { trackId: nextTrackId };
+      }
+    }
 
-    if (contentChanged) {
+    // Any change to a structured field bumps the version and snapshots the prior state.
+    const changes: Partial<Record<StructuredField, unknown>> = {};
+    let versionWorthy = false;
+    for (const f of STRUCTURED_FIELDS) {
+      if (req.body[f] === undefined) continue;
+      if ((existing as any)[f] !== req.body[f]) {
+        changes[f] = req.body[f];
+        // Status changes alone shouldn't bump the version.
+        if (f !== 'status') versionWorthy = true;
+      }
+    }
+
+    let nextVersion = existing.version;
+    if (versionWorthy) {
       nextVersion = existing.version + 1;
       await prisma.workflowSOWVersion.create({
         data: {
           sowId: existing.id,
-          content: existing.content,
+          content: existing.scope || existing.content || '',
+          snapshotJson: buildSnapshot(existing),
           version: existing.version,
           createdByUserId: req.user!.userId,
         },
@@ -507,12 +749,11 @@ export async function updateSOW(req: AuthRequest, res: Response) {
     const sow = await prisma.workflowSOW.update({
       where: { id },
       data: {
-        ...(title !== undefined && { title }),
-        ...(content !== undefined && { content }),
-        ...(trackId !== undefined && { trackId }),
-        ...(status !== undefined && { status }),
-        ...(contentChanged && { version: nextVersion }),
-      },
+        ...changes,
+        ...(trackChange || {}),
+        ...(versionWorthy && { version: nextVersion }),
+      } as any,
+      include: { track: { select: { id: true, title: true } } },
     });
     return res.json(sow);
   } catch (err) {
@@ -523,9 +764,19 @@ export async function updateSOW(req: AuthRequest, res: Response) {
 export async function deleteSOW(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    await prisma.workflowSOW.delete({ where: { id } });
-    return res.json({ message: 'Deleted' });
+    const existing = await prisma.workflowSOW.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    if (!assertClientAccess(req, existing.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+    await softDelete({
+      modelName: 'workflowSOW',
+      entityType: 'WorkflowSOW',
+      id,
+      userId: req.user?.userId || null,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({ message: 'SOW moved to recycle bin' });
   } catch (err) {
+    console.error('[deleteSOW]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -605,6 +856,129 @@ export async function listWorkflowUsers(req: AuthRequest, res: Response) {
     return res.json(users);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── AI: cross-SOW overlap warning ────────────────────────────────────────
+//
+// The analyst wants a heads-up if a new SOW proposes materially similar work
+// to an existing SOW on a different funding path (e.g. same scope promised to
+// AFRL via ARA and also to SBIR). Returns { overlaps: [{ sowId, sowTitle, trackTitle, reason }] }.
+// Warn-only — the caller decides whether to save anyway.
+
+export async function checkSOWOverlap(req: AuthRequest, res: Response) {
+  const {
+    workflowClientId,
+    excludeSowId,
+    title,
+    scope,
+    deliverables,
+    targetAgency,
+    targetFundingVehicle,
+  } = req.body as {
+    workflowClientId?: string;
+    excludeSowId?: string;
+    title?: string;
+    scope?: string;
+    deliverables?: unknown;
+    targetAgency?: string;
+    targetFundingVehicle?: string;
+  };
+  if (!workflowClientId) return res.status(400).json({ error: 'workflowClientId required' });
+  if (!assertClientAccess(req, workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const others = await prisma.workflowSOW.findMany({
+      where: {
+        workflowClientId,
+        ...(excludeSowId && { NOT: { id: excludeSowId } }),
+      },
+      select: {
+        id: true,
+        title: true,
+        targetAgency: true,
+        targetFundingVehicle: true,
+        scope: true,
+        deliverables: true,
+        track: { select: { title: true } },
+      },
+    });
+
+    // Nothing to compare against — no overlaps.
+    if (others.length === 0) return res.json({ overlaps: [] });
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    const candidate = {
+      title: title || '(untitled)',
+      targetAgency: targetAgency || null,
+      targetFundingVehicle: targetFundingVehicle || null,
+      scope: (scope || '').slice(0, 3500),
+      deliverables: safeJsonArray(typeof deliverables === 'string' ? deliverables : JSON.stringify(deliverables ?? [])),
+    };
+
+    const corpus = others.map((s) => ({
+      id: s.id,
+      title: s.title,
+      trackTitle: s.track?.title || null,
+      targetAgency: s.targetAgency,
+      targetFundingVehicle: s.targetFundingVehicle,
+      scope: (s.scope || '').slice(0, 2500),
+      deliverables: safeJsonArray(s.deliverables),
+    }));
+
+    const systemPrompt = `You are a defense acquisition analyst. Flag when a newly drafted SOW proposes materially the same technical work as an EXISTING SOW on a *different funding path* (different targetAgency OR different targetFundingVehicle).
+
+Only flag true overlaps: shared core deliverables, shared scope of work, or the same underlying capability being promised to two separate funders. Do NOT flag minor keyword matches, generic language, or SOWs already on the same funding path.
+
+Return STRICT JSON, a single line, no prose or code fences:
+{"overlaps":[{"sowId":"<id>","reason":"<1-2 sentence explanation of the overlap>"}]}
+
+Return an empty array if there are no overlaps.`;
+
+    const userPrompt = `NEW (candidate) SOW:\n${JSON.stringify(candidate, null, 2)}\n\nEXISTING SOWs in this client:\n${JSON.stringify(corpus, null, 2)}\n\nReturn the JSON now.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 700,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((b: any) => b.type === 'text') as { type: 'text'; text: string } | undefined;
+    const raw = textBlock?.text?.trim() || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[check-overlap] Unparseable:', raw);
+      return res.json({ overlaps: [] });
+    }
+    let parsed: { overlaps?: Array<{ sowId: string; reason: string }> };
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.json({ overlaps: [] });
+    }
+
+    const byId = new Map(others.map((s) => [s.id, s]));
+    const hits = (parsed.overlaps || [])
+      .filter((h) => h && typeof h.sowId === 'string' && byId.has(h.sowId))
+      .map((h) => {
+        const s = byId.get(h.sowId)!;
+        return {
+          sowId: s.id,
+          sowTitle: s.title,
+          trackTitle: s.track?.title || null,
+          reason: h.reason || '',
+        };
+      });
+
+    return res.json({ overlaps: hits });
+  } catch (err: any) {
+    console.error('[check-overlap]', err);
+    return res.status(500).json({ error: err?.message || 'Server error' });
   }
 }
 
@@ -691,6 +1065,179 @@ Respond ONLY as minified JSON on a single line with exactly these keys: {"sugges
   } catch (err: any) {
     console.error('[suggest-track]', err);
     return res.status(500).json({ error: err?.message || 'Server error' });
+  }
+}
+
+// ─── AI: integrate SOW with a target track ────────────────────────────────
+
+export async function integrateSOWWithTrack(req: AuthRequest, res: Response) {
+  const { id, trackId } = req.params;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  try {
+    const sow = await prisma.workflowSOW.findUnique({ where: { id } });
+    if (!sow) return res.status(404).json({ error: 'SOW not found' });
+    if (!assertClientAccess(req, sow.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    const track = await prisma.workflowTrack.findUnique({
+      where: { id: trackId },
+      include: {
+        phases: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            milestones: {
+              orderBy: { sortOrder: 'asc' },
+              include: { actionItems: { orderBy: { sortOrder: 'asc' }, select: { title: true, dueDate: true, status: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!track || track.workflowClientId !== sow.workflowClientId) {
+      return res.status(400).json({ error: 'Track not found for this client' });
+    }
+
+    const sowBrief = JSON.stringify({
+      title: sow.title,
+      targetFundingVehicle: sow.targetFundingVehicle,
+      targetAgency: sow.targetAgency,
+      periodOfPerformance: sow.periodOfPerformance,
+      budget: sow.budget,
+      differentiationLayer: sow.differentiationLayer,
+      trlStatement: sow.trlStatement,
+      scope: (sow.scope || sow.content || '').slice(0, 4000),
+      deliverables: safeJsonArray(sow.deliverables),
+      draftingChecklist: safeJsonArray(sow.draftingChecklist).map((c: any) => ({ title: c.title, done: !!c.done })),
+    }, null, 2);
+
+    const trackBrief = JSON.stringify({
+      title: track.title,
+      description: track.description,
+      fundingVehicle: track.fundingVehicle,
+      phases: track.phases.map((ph) => ({
+        title: ph.title,
+        budget: ph.budget,
+        timeframe: ph.timeframe,
+        milestones: ph.milestones.map((m) => ({
+          title: m.title,
+          dueDate: m.dueDate,
+          actionItems: m.actionItems.map((a) => a.title),
+        })),
+      })),
+    }, null, 2);
+
+    const systemPrompt = `You are a defense acquisition analyst at Signal Ridge Strategies. A SOW has just been assigned to a track. Produce a short reconciliation report so the analyst can see where the SOW fits cleanly and where there is friction.
+
+${LAYER_FRAMEWORK}
+
+Evaluate the fit on these dimensions:
+- Funding vehicle alignment (does the SOW's target match the track's funding vehicle?)
+- Period of performance alignment (does the SOW POP fit within the track's phase timeframes?)
+- Budget alignment (does the SOW budget fit within the track's phase budget, if any?)
+- Differentiation layer alignment (does the SOW's Layer match what the track funds?)
+- TRL alignment (does the SOW's TRL target match the track's phase TRL expectation?)
+- Any scope or deliverable gaps that should become action items on the track.
+
+Output STRICT JSON on a single line, no prose, no code fences:
+{"items":[{"kind":"ok"|"warn"|"suggest","text":"short sentence"}]}
+
+"ok" = clean alignment. "warn" = something is off and needs attention. "suggest" = recommend adding an action item or adjusting a field. 3-6 items total. Be concrete — name specific phases, dollar amounts, or dates when relevant.`;
+
+    const userPrompt = `SOW:\n${sowBrief}\n\nTRACK:\n${trackBrief}\n\nReturn the JSON now.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 700,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((b: any) => b.type === 'text') as { type: 'text'; text: string } | undefined;
+    const raw = textBlock?.text?.trim() || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[integrate-track] Unparseable:', raw);
+      return res.status(502).json({ error: 'AI returned unparseable response' });
+    }
+    let parsed: { items?: Array<{ kind: string; text: string }> };
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(502).json({ error: 'AI returned invalid JSON' });
+    }
+    return res.json({
+      sowTitle: sow.title,
+      trackTitle: track.title,
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+    });
+  } catch (err: any) {
+    console.error('[integrate-track]', err);
+    return res.status(500).json({ error: err?.message || 'Server error' });
+  }
+}
+
+function safeJsonArray(s: string | null | undefined): any[] {
+  try {
+    const v = JSON.parse(s || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// ─── Assignees for action item dropdown ───────────────────────────────────
+
+/**
+ * Returns the list of people an action item can be assigned to for a given
+ * workflow client:
+ *   - All CRM contacts linked to the workflow client's Entity (e.g. Shadowgrid
+ *     staff in the CRM)
+ *   - All active CRM users (so Signal Ridge staff — including Jon — can be
+ *     assigned actions even though they are not Shadowgrid contacts)
+ */
+export async function listAssignees(req: AuthRequest, res: Response) {
+  const { id } = req.params; // workflowClientId
+  if (!assertClientAccess(req, id)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const client = await prisma.workflowClient.findUnique({ where: { id } });
+    if (!client) return res.status(404).json({ error: 'Not found' });
+
+    const contacts = client.clientId
+      ? await prisma.contact.findMany({
+          where: { entityId: client.clientId },
+          select: { id: true, firstName: true, lastName: true, email: true, title: true },
+          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        })
+      : [];
+
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const assignees = [
+      ...contacts.map((c) => ({
+        kind: 'contact' as const,
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`.trim(),
+        email: c.email || null,
+        subtitle: c.title || 'Contact',
+      })),
+      ...users.map((u) => ({
+        kind: 'user' as const,
+        id: u.id,
+        name: `${u.firstName} ${u.lastName}`.trim(),
+        email: u.email,
+        subtitle: `Signal Ridge · ${u.role}`,
+      })),
+    ];
+    return res.json(assignees);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
   }
 }
 

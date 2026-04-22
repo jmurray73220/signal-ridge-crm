@@ -153,13 +153,13 @@ const TRACKS: TrackSeed[] = [
         ],
       },
       {
-        title: 'Proposal Language Fixes',
+        title: 'Resubmission Coordination',
         description:
-          'Critical edits identified from the AFRL/RIGA review. The original white paper earned a "favorable" rating on technical merit — this milestone is about fixing the language gaps that, combined with the unphased $20M ask, blocked funding.',
+          'Track-level resubmission actions. The white-paper text fixes themselves live on the Genesis SOW as drafting checklist items, so they travel with the SOW if it is ever reassigned to a different funding vehicle.',
         milestones: [
           {
-            title: 'Resubmission prep',
-            description: 'Edit the white paper before resubmitting. Each fix maps to a specific reviewer concern or missing section.',
+            title: 'Pre-submission',
+            description: 'Confirm Genesis floor + phased structure, then submit inside the institutional-memory window.',
             actions: [
               {
                 title: 'Call Thomas Parisi and Amber Buckley to validate Genesis floor and phased structure',
@@ -170,46 +170,6 @@ const TRACKS: TrackSeed[] = [
                 title: 'Resubmit within 60 days of prior decision window',
                 description:
                   'The AFRL/RIGA "favorable" rating is a written technical endorsement that ages. Resubmitting while the reviewers still remember the submission keeps the institutional memory warm and increases the odds that the same evaluators see the phased rework.',
-              },
-              {
-                title: 'Add TRL statement (current TRL and target TRL by phase)',
-                description:
-                  'The original white paper has no TRL statement and AFRL reviewers will ask immediately. An honest claim of TRL 3-4 entering Phase 1 and TRL 6-7 by end of Phase 3 is both defensible and fundable — pretending to be higher than that invites technical challenge with no upside.',
-              },
-              {
-                title: 'Add key personnel section with resumes and role allocation',
-                description:
-                  'A missing key personnel section signals to reviewers that the proposer has not thought through execution. Name PI, co-PI, technical leads for each layer, and allocate percent-time against each phase so the program office can see who is actually doing the work.',
-              },
-              {
-                title: 'Fix "proprietary signals collection" language per AFRL feedback',
-                description:
-                  'This phrase will get flagged because reviewers will want to know whether it implies active collection inside denied territory — which raises Title 50 and CFAA concerns AFRL has no appetite to adjudicate. Clarify that collection is from commercial and open-source sources, or remove the phrase entirely.',
-              },
-              {
-                title: 'Fix "disruption pathways" language per AFRL feedback',
-                description:
-                  'The word "disruption" reads as offensive/operational activity, which pushes the proposal outside AFRL/RIGA\'s charter. Replace with "access pathway identification" and add an explicit note that the platform produces analysis, not exploits or payloads — this maps directly to the readiness-not-capability framing.',
-              },
-              {
-                title: 'Add security architecture section (cleared ceiling, facility plan)',
-                description:
-                  'Reviewers need to see the cleared ceiling of the team, the facility plan, and how classified data handling would work if required. Missing this section was one of the gaps noted — including it removes an easy reason to defer funding.',
-              },
-              {
-                title: 'Add transition plan section (sponsor, timeline, funding line)',
-                description:
-                  'A Genesis proposal without a transition plan is an R&D pitch, not a program. Even a placeholder naming CYBERCOM J39 as a prospective sponsor, with a timeline and candidate funding line, changes how the program office reads the whole document.',
-              },
-              {
-                title: 'Add readiness-not-capability framing explicitly',
-                description:
-                  'CAITIP produces analysis, not action — no exploit code, no payloads, all execution requires legal authorization and operator decision authority. Stating this explicitly in the white paper preempts the most common reviewer objection and gives cover for the "access pathway identification" language elsewhere in the document.',
-              },
-              {
-                title: 'Add 98% automation claim with supporting math',
-                description:
-                  'The platform automates work that would otherwise require a full-time analyst team. That is the single most striking differentiator Shadowgrid has and it does not appear in the current white paper. Put it in, with the analyst-hours-saved math behind it, because reviewers remember specific numbers.',
               },
             ],
           },
@@ -568,56 +528,167 @@ const TIMELINE: TrackSeed = {
   ],
 };
 
-const SOW_STUBS: Array<{ trackTitle: string; title: string; content: string }> = [
+type ChecklistItem = { id: string; title: string; done: boolean };
+
+type SowStubSeed = {
+  trackTitle: string | null;
+  title: string;
+  targetFundingVehicle: string | null;
+  targetAgency: string | null;
+  periodOfPerformance: string | null;
+  budget: string | null;
+  differentiationLayer: string | null; // Layer1..Layer4|CrossLayer
+  trlStatement: string | null;
+  scope: string;
+  keyPersonnel: string;
+  deliverables: string[];
+  draftingChecklist: ChecklistItem[];
+};
+
+function cl(title: string, done = false): ChecklistItem {
+  return { id: `cl-${Math.random().toString(36).slice(2, 10)}`, title, done };
+}
+
+const SOW_STUBS: SowStubSeed[] = [
   {
     trackTitle: 'Genesis Resubmission',
     title: 'SOW — Genesis (Layer 2: Integrated Prototype)',
-    content:
-      '# SOW — Genesis (Layer 2: Integrated Prototype)\n\n' +
-      '**Differentiation framework:** Layer 2 — Integrated Prototype.\n\n' +
-      'This SOW covers the operational prototype bridging the Layer 1 research core and Layer 3 operator tooling. ' +
-      'It is distinct from SBIR (Layer 1 feasibility) and from AFWERX (Layer 3 operator workflow). ' +
-      'Fill in scope, deliverables, pricing, and assumptions below.\n\n' +
-      '## Scope\n\nTBD\n\n## Deliverables\n\nTBD\n\n## Price & Schedule\n\nTBD\n',
+    targetFundingVehicle: 'Genesis',
+    targetAgency: 'AFRL/RIGA',
+    periodOfPerformance: 'Phase 1: 6 months; Phase 2: 18 months; Phase 3: 18 months',
+    budget: 'Phase 1: $200-300K; Phase 2: $3-4M; Phase 3: $4-5M (total $8-10M phased)',
+    differentiationLayer: 'Layer2',
+    trlStatement: 'Enter Phase 1 at TRL 3-4; exit Phase 3 at TRL 6-7',
+    scope:
+      'Integrated prototype bridging the Layer 1 research core and Layer 3 operator tooling. ' +
+      'Phase 1 demonstrates passive multi-source telemetry fusion on a representative dataset. ' +
+      'Phase 2 builds the operator-facing geospatial attribution UI and runs a structured operator evaluation cycle. ' +
+      'Phase 3 hardens the prototype and produces the ATO package and transition plan. ' +
+      'CAITIP produces analysis, not action — no exploit code, no payloads; all execution requires legal ' +
+      'authorization and operator decision authority.',
+    keyPersonnel:
+      'PI: TBD (Shadowgrid technical lead, cleared).\n' +
+      'Co-PI: TBD.\n' +
+      'Phase-1 technical lead, geospatial UI lead, ATO/security lead: to be named with percent-time allocation.',
+    deliverables: [
+      'POC demonstration with recorded baseline metrics (Phase 1)',
+      'Geospatial attribution UI integrated with Layer 1 pipeline (Phase 2)',
+      'Operator evaluation report with quantitative task-completion metrics (Phase 2)',
+      'ATO package: SSP, controls mapping, POA&M (Phase 3)',
+      'Transition plan naming sponsor, funding line, operator owner (Phase 3)',
+    ],
+    draftingChecklist: [
+      cl('Add TRL statement (current TRL and target TRL by phase)'),
+      cl('Add key personnel section with resumes and role allocation'),
+      cl('Fix "proprietary signals collection" language per AFRL feedback'),
+      cl('Fix "disruption pathways" language per AFRL feedback'),
+      cl('Add security architecture section (cleared ceiling, facility plan)'),
+      cl('Add transition plan section (sponsor, timeline, funding line)'),
+      cl('Add readiness-not-capability framing explicitly'),
+      cl('Add 98% automation claim with supporting math'),
+    ],
   },
   {
     trackTitle: 'SBIR Phase I',
     title: 'SOW — SBIR Phase I (Layer 1: AI/ML Research Core)',
-    content:
-      '# SOW — SBIR Phase I (Layer 1: AI/ML Research Core)\n\n' +
-      '**Differentiation framework:** Layer 1 — AI/ML Research Core.\n\n' +
-      'Six-month feasibility study on passive multi-source telemetry fusion and agentic entity resolution. ' +
-      'Distinct from Genesis Layer 2 (integrated prototype) and from platform-level work.\n\n' +
-      '## Scope\n\nTBD\n\n## Deliverables\n\nTBD\n\n## Price & Schedule\n\n$150-300K, 6 months.\n',
+    targetFundingVehicle: 'SBIR Phase I',
+    targetAgency: 'AFRL/RI (first choice), DARPA I2O (second), NSA/CYBERCOM-sponsored (third)',
+    periodOfPerformance: '6 months',
+    budget: '$150-300K',
+    differentiationLayer: 'Layer1',
+    trlStatement: 'Feasibility-scale research; TRL 3 entry, TRL 3-4 exit',
+    scope:
+      'Six-month feasibility study on passive multi-source telemetry fusion and agentic AI entity resolution — ' +
+      'the methodology underpinning CAITIP\'s correlation engine. Explicitly distinct from the Genesis Layer 2 ' +
+      'integrated prototype: this SOW funds the research core, not the operational system.',
+    keyPersonnel:
+      'PI: TBD (Shadowgrid research lead).\n' +
+      'Methodology lead for entity resolution and correlation engine.',
+    deliverables: [
+      'Feasibility report on multi-source telemetry fusion',
+      'Entity-resolution precision/recall baseline on representative dataset',
+      'Phase II proposal framing document',
+    ],
+    draftingChecklist: [
+      cl('Identify target SBIR solicitation cycle'),
+      cl('Confirm selected topic does not overlap Genesis scope'),
+      cl('Differentiate SBIR scope explicitly from Genesis in narrative'),
+      cl('Draft Phase I proposal'),
+    ],
   },
   {
     trackTitle: 'DIU Commercial Solutions Opening',
     title: 'SOW — DIU CSO (Layer 4: Commercial Platform)',
-    content:
-      '# SOW — DIU CSO (Layer 4: Commercial Platform)\n\n' +
-      '**Differentiation framework:** Layer 4 — Commercial Platform.\n\n' +
-      'Commercial platform adaptation for DoD use. Geospatial interface, commercial data integrations, ' +
-      'government-hardened instance. Distinct from the research core and from point operator tools.\n\n' +
-      '## Scope\n\nTBD\n\n## Deliverables\n\nTBD\n\n## Price & Schedule\n\nTBD\n',
+    targetFundingVehicle: 'DIU Commercial Solutions Opening',
+    targetAgency: 'DIU (requires CYBERCOM or AFCYBER transition partner)',
+    periodOfPerformance: 'TBD',
+    budget: 'TBD',
+    differentiationLayer: 'Layer4',
+    trlStatement: 'Commercial product adapted to DoD; TRL 7-8',
+    scope:
+      'Commercial platform adaptation for DoD use — geospatial interface, commercial data integrations, ' +
+      'government-hardened SaaS instance. Distinct from the research core (Layer 1) and from point operator ' +
+      'tools (Layer 3). Submission is gated on a letter of interest from CYBERCOM J39 or AFCYBER.',
+    keyPersonnel: 'PI: TBD. Deployment lead for government-hardened instance.',
+    deliverables: [
+      'White paper describing platform adaptation and government-hardened deployment',
+      'Solution pitch deck',
+      'CYBERCOM or AFCYBER letter of interest attached at submission',
+    ],
+    draftingChecklist: [
+      cl('Begin CSO preparation (white paper, solution pitch)'),
+      cl('Secure CYBERCOM letter of interest before submission'),
+      cl('Lead with AFRL favorable rating in narrative'),
+    ],
   },
   {
     trackTitle: 'AFWERX',
     title: 'SOW — AFWERX (Layer 3: Operator-Facing Tools)',
-    content:
-      '# SOW — AFWERX (Layer 3: Operator-Facing Tools)\n\n' +
-      '**Differentiation framework:** Layer 3 — Operator-Facing Tools.\n\n' +
-      'Hunt Chat, Response Packaging automation, and mission planning workflow for AFCYBER operators. ' +
-      'Distinct from the research core and from the integrated prototype.\n\n' +
-      '## Scope\n\nTBD\n\n## Deliverables\n\nTBD\n\n## Price & Schedule\n\nTBD\n',
+    targetFundingVehicle: 'AFWERX',
+    targetAgency: 'AFWERX (AFCYBER operator community)',
+    periodOfPerformance: 'TBD',
+    budget: 'TBD',
+    differentiationLayer: 'Layer3',
+    trlStatement: 'Operator workflow tooling; TRL 5-6',
+    scope:
+      'Operator-facing tools for AFCYBER: Hunt Chat, Response Packaging automation, and mission planning ' +
+      'workflow. Distinct from the research core and from the integrated prototype. Framed around the ' +
+      'Execution Gap — the time between knowing something and being able to act on it.',
+    keyPersonnel: 'PI: TBD. Operator workflow lead.',
+    deliverables: [
+      'Hunt Chat operator tooling',
+      'Response Packaging automation',
+      'Mission planning workflow integration',
+    ],
+    draftingChecklist: [
+      cl('Begin AFWERX portal application'),
+      cl('Emphasize operator workflow and Execution Gap reduction'),
+      cl('Reference AFRL favorable rating for credibility'),
+    ],
   },
   {
     trackTitle: 'CYBERCOM / AFCYBER Relationship Development',
     title: 'SOW — Relationship Development (Cross-Layer)',
-    content:
-      '# SOW — Relationship Development\n\n' +
-      'Not a funding vehicle. This document captures engagement milestones, ' +
-      'letters of interest, and transition-sponsor conversations across all four differentiation layers.\n\n' +
-      '## Objectives\n\nTBD\n\n## Engagement plan\n\nTBD\n',
+    targetFundingVehicle: null,
+    targetAgency: 'CYBERCOM J39; AFCYBER',
+    periodOfPerformance: 'Ongoing',
+    budget: 'N/A (not a funding vehicle)',
+    differentiationLayer: 'CrossLayer',
+    trlStatement: 'N/A',
+    scope:
+      'Not a funding vehicle. Captures engagement milestones, letters of interest, and transition-sponsor ' +
+      'conversations across all four differentiation layers. Pitched in deterrence terms for CYBERCOM ' +
+      'leadership, not platform-demo terms.',
+    keyPersonnel: 'Jon Murray (lead relationship owner). Technical briefer: TBD.',
+    deliverables: [
+      'Introductory capabilities briefings with CYBERCOM J39 and AFCYBER',
+      'CYBERCOM letter of interest for DIU submission',
+      'Candidate CYBERCOM-sponsored SBIR topic shortlist',
+    ],
+    draftingChecklist: [
+      cl('Prepare deterrence-framed pitch (not platform pitch)'),
+      cl('Draft capabilities briefing deck'),
+    ],
   },
 ];
 
@@ -634,6 +705,20 @@ async function seed() {
   let client = await prisma.workflowClient.findFirst({ where: { name: CLIENT_NAME } });
   if (client) {
     console.log(`[seed] Resetting existing WorkflowClient "${CLIENT_NAME}" (${client.id})`);
+
+    // Clean up mirrored initiatives for any tracks about to be deleted.
+    const existingTracks = await prisma.workflowTrack.findMany({
+      where: { workflowClientId: client.id },
+      select: { initiativeId: true },
+    });
+    const mirroredInitiativeIds = existingTracks
+      .map((t) => t.initiativeId)
+      .filter((id): id is string => !!id);
+    if (mirroredInitiativeIds.length > 0) {
+      await prisma.initiative.deleteMany({ where: { id: { in: mirroredInitiativeIds } } });
+      console.log(`[seed]  Removed ${mirroredInitiativeIds.length} stale mirror initiative(s)`);
+    }
+
     await prisma.workflowTrack.deleteMany({ where: { workflowClientId: client.id } });
     await prisma.workflowSOW.deleteMany({ where: { workflowClientId: client.id } });
     client = await prisma.workflowClient.update({
@@ -650,8 +735,26 @@ async function seed() {
   const allTracks = [...TRACKS, TIMELINE];
 
   let actionCount = 0;
+  let initiativeCount = 0;
   for (let ti = 0; ti < allTracks.length; ti++) {
     const t = allTracks[ti];
+
+    // Create the mirror CRM Initiative first so we can store its id on the track.
+    let initiativeId: string | null = null;
+    if (entity) {
+      const initiative = await prisma.initiative.create({
+        data: {
+          title: t.title,
+          description: [t.fundingVehicle, t.description].filter(Boolean).join('\n\n') || null,
+          primaryEntityId: entity.id,
+          status: 'Active',
+          priority: 'Medium',
+        },
+      });
+      initiativeId = initiative.id;
+      initiativeCount++;
+    }
+
     const track = await prisma.workflowTrack.create({
       data: {
         workflowClientId: client.id,
@@ -660,9 +763,10 @@ async function seed() {
         fundingVehicle: t.fundingVehicle ?? null,
         status: 'Active',
         sortOrder: ti,
+        initiativeId,
       },
     });
-    console.log(`[seed]  Track: ${t.title}`);
+    console.log(`[seed]  Track: ${t.title}${initiativeId ? ' (mirrored to CRM Initiative)' : ''}`);
 
     for (let pi = 0; pi < t.phases.length; pi++) {
       const p = t.phases[pi];
@@ -713,21 +817,41 @@ async function seed() {
     where: { workflowClientId: client.id },
   });
   for (const stub of SOW_STUBS) {
-    const tr = tracksByTitle.find((x) => x.title === stub.trackTitle);
-    await prisma.workflowSOW.create({
+    const tr = stub.trackTitle ? tracksByTitle.find((x) => x.title === stub.trackTitle) : null;
+    // Skip if the target track is already linked to a SOW (at-most-one invariant).
+    if (tr) {
+      const existingOnTrack = await prisma.workflowSOW.findUnique({ where: { trackId: tr.id } });
+      if (existingOnTrack) {
+        console.log(`[seed]  SOW skipped (track already has a SOW): ${stub.title} → ${tr.title}`);
+        continue;
+      }
+    }
+    const sow = await prisma.workflowSOW.create({
       data: {
         workflowClientId: client.id,
         trackId: tr?.id ?? null,
         title: stub.title,
-        content: stub.content,
+        targetFundingVehicle: stub.targetFundingVehicle,
+        targetAgency: stub.targetAgency,
+        periodOfPerformance: stub.periodOfPerformance,
+        budget: stub.budget,
+        differentiationLayer: stub.differentiationLayer,
+        trlStatement: stub.trlStatement,
+        scope: stub.scope,
+        keyPersonnel: stub.keyPersonnel,
+        deliverables: JSON.stringify(stub.deliverables),
+        draftingChecklist: JSON.stringify(stub.draftingChecklist),
+        content: '', // legacy
         version: 1,
         status: 'Draft',
       },
     });
-    console.log(`[seed]  SOW: ${stub.title}`);
+    console.log(`[seed]  SOW: ${stub.title}${tr ? ` → ${tr.title}` : ' (unassigned)'}`);
   }
 
-  console.log(`\n[seed] Shadowgrid workflow seed complete. ${allTracks.length} tracks, ${actionCount} action items.`);
+  console.log(
+    `\n[seed] Shadowgrid workflow seed complete. ${allTracks.length} tracks, ${initiativeCount} mirror initiatives, ${actionCount} action items.`
+  );
 }
 
 seed()

@@ -11,6 +11,7 @@ import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { ContactModal } from '../components/ContactModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
+import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -438,12 +439,14 @@ export function ContactDetail() {
         />
       )}
 
+      <ChangeLogPanel entityType="Contact" entityId={contact.id} />
+
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="rounded-xl p-6 max-w-sm w-full" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
             <h3 className="text-base font-semibold mb-2" style={{ color: '#e6edf3' }}>Delete Contact?</h3>
             <p className="text-sm mb-6" style={{ color: '#8b949e' }}>
-              This will permanently delete {contact.firstName} {contact.lastName} and all associated data.
+              {contact.firstName} {contact.lastName} will be moved to the recycle bin. Admins can restore within 90 days from Settings → Recycle Bin.
             </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="btn-secondary">Cancel</button>

@@ -20,6 +20,7 @@ import budgetRoutes from './routes/budgets';
 import reportTemplateRoutes from './routes/reportTemplates';
 import settingsRoutes from './routes/settings';
 import workflowRoutes from './routes/workflow';
+import recycleBinRoutes from './routes/recycleBin';
 import { errorHandler } from './middleware/errorHandler';
 import { startBackgroundSync } from './services/gmail';
 
@@ -52,6 +53,7 @@ app.use('/api/budgets', budgetRoutes);
 app.use('/api/report-templates', reportTemplateRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/workflow', workflowRoutes);
+app.use('/api', recycleBinRoutes);
 
 // Gmail routes (mixed auth/api prefix — handled internally in the router)
 app.use('/', gmailRoutes);

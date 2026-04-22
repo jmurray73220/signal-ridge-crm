@@ -3,12 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './AuthContext';
+import { ClientProvider } from './ClientContext';
 import { Layout } from './Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { TrackDetail } from './pages/TrackDetail';
 import { ActionItemDetail } from './pages/ActionItemDetail';
-import { SOWList } from './pages/SOWList';
 import { SOWDetail } from './pages/SOWDetail';
 import { Admin } from './pages/Admin';
 
@@ -36,6 +36,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ClientProvider>
         <BrowserRouter basename="/workflow">
           <Toaster
             position="top-right"
@@ -56,7 +57,6 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="tracks/:id" element={<TrackDetail />} />
               <Route path="action-items/:id" element={<ActionItemDetail />} />
-              <Route path="sows" element={<SOWList />} />
               <Route path="sows/:id" element={<SOWDetail />} />
               <Route
                 path="admin"
@@ -70,6 +70,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </ClientProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

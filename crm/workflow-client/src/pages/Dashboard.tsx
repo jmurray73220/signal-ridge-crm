@@ -1,34 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, List, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { listClients, listTracks, createTrack } from '../api';
+import { listTracks, createTrack } from '../api';
 import { useAuth } from '../AuthContext';
-import type { WorkflowClient, WorkflowTrack, WorkflowActionItem } from '../types';
+import { useClientContext } from '../ClientContext';
+import type { WorkflowTrack, WorkflowActionItem } from '../types';
+import { PromptModal } from '../components/Modal';
 
 type View = 'kanban' | 'list';
 
 export function Dashboard() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const isAdmin = user?.workflowRole === 'WorkflowAdmin';
   const [view, setView] = useState<View>('kanban');
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [newTrackOpen, setNewTrackOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  const clientsQuery = useQuery<WorkflowClient[]>({
-    queryKey: ['clients'],
-    queryFn: listClients,
-  });
-
-  useEffect(() => {
-    if (!selectedClientId && clientsQuery.data && clientsQuery.data.length > 0) {
-      const defaultId =
-        user?.workflowClientId && clientsQuery.data.find((c) => c.id === user.workflowClientId)
-          ? user.workflowClientId
-          : clientsQuery.data[0].id;
-      setSelectedClientId(defaultId);
-    }
-  }, [clientsQuery.data, selectedClientId, user]);
+  const { selectedClient: activeClient, selectedClientId } = useClientContext();
 
   const tracksQuery = useQuery<WorkflowTrack[]>({
     queryKey: ['tracks', selectedClientId],
@@ -36,40 +27,49 @@ export function Dashboard() {
     enabled: !!selectedClientId,
   });
 
-  async function handleAddTrack() {
+  // Dynamic client branding — browser tab + page header both pull from DB
+  useEffect(() => {
+    if (activeClient) {
+      document.title = `${activeClient.name} — Signal Ridge Strategies`;
+    } else {
+      document.title = 'Signal Ridge Workflow';
+    }
+  }, [activeClient]);
+
+  async function submitTrack(title: string) {
     if (!selectedClientId) return;
-    const title = window.prompt('Track title?');
-    if (!title) return;
+    setCreating(true);
     try {
       await createTrack({ workflowClientId: selectedClientId, title });
       toast.success('Track created');
-      tracksQuery.refetch();
+      qc.invalidateQueries({ queryKey: ['tracks', selectedClientId] });
+      setNewTrackOpen(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to create track');
+    } finally {
+      setCreating(false);
     }
   }
 
   return (
     <div>
+      {activeClient && (
+        <div className="mb-6 pb-5 border-b border-border">
+          <h1 className="text-3xl font-semibold text-accent tracking-tight">
+            {activeClient.name} Strategic Roadmap
+          </h1>
+          <p className="text-text-muted text-sm mt-1">Managed by Signal Ridge Strategies</p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-accent">Roadmap</h1>
+          <h2 className="text-lg font-semibold">Tracks</h2>
           <p className="text-text-muted text-sm mt-1">
-            Funding tracks, phases, milestones, and action items.
+            Funding vehicles, relationship building, and timeline coordination.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && clientsQuery.data && clientsQuery.data.length > 1 && (
-            <select
-              className="input max-w-xs"
-              value={selectedClientId || ''}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-            >
-              {clientsQuery.data.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          )}
           <div className="inline-flex border border-border rounded overflow-hidden">
             <button
               className={`px-3 py-1.5 text-sm flex items-center gap-1 ${
@@ -89,7 +89,7 @@ export function Dashboard() {
             </button>
           </div>
           {isAdmin && (
-            <button className="btn-primary flex items-center gap-1" onClick={handleAddTrack}>
+            <button className="btn-primary flex items-center gap-1" onClick={() => setNewTrackOpen(true)}>
               <Plus size={14} /> Track
             </button>
           )}
@@ -104,6 +104,18 @@ export function Dashboard() {
       )}
       {tracksQuery.data && tracksQuery.data.length > 0 && (
         view === 'kanban' ? <Kanban tracks={tracksQuery.data} /> : <ListView tracks={tracksQuery.data} />
+      )}
+
+      {newTrackOpen && (
+        <PromptModal
+          title="New track"
+          label="Track title"
+          placeholder="e.g. Genesis Resubmission"
+          submitLabel="Create track"
+          loading={creating}
+          onClose={() => setNewTrackOpen(false)}
+          onSubmit={submitTrack}
+        />
       )}
     </div>
   );

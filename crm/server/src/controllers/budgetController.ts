@@ -1,11 +1,9 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 // ─── Document Library ────────────────────────────────────────────────────────
 

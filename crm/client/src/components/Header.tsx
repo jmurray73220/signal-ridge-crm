@@ -87,7 +87,7 @@ export function Header() {
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          placeholder="Search… (⌘K)"
+          placeholder="Search… (Ctrl+K)"
           className="w-full pl-9 pr-9 py-2 text-sm rounded border focus:outline-none focus:border-accent transition-colors"
           style={{
             background: '#0d1117',

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
+import { SettingsLayout } from './components/SettingsLayout';
 import { Login } from './pages/Login';
 import { ForceChangePassword } from './pages/ForceChangePassword';
 import { Dashboard } from './pages/Dashboard';
@@ -25,6 +26,7 @@ import { Reminders } from './pages/Reminders';
 import { Users } from './pages/settings/Users';
 import { Account } from './pages/settings/Account';
 import { GmailSettings } from './pages/settings/Gmail';
+import { RecycleBin } from './pages/settings/RecycleBin';
 import { GmailReview } from './pages/GmailReview';
 import { Tags } from './pages/Tags';
 import { BudgetAnalyzer } from './pages/BudgetAnalyzer';
@@ -130,15 +132,19 @@ function AppRoutes() {
       />
       <Route
         path="/settings/users"
-        element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>}
+        element={<ProtectedRoute adminOnly><SettingsLayout><Users /></SettingsLayout></ProtectedRoute>}
       />
       <Route
         path="/settings/account"
-        element={<ProtectedRoute><Account /></ProtectedRoute>}
+        element={<ProtectedRoute><SettingsLayout><Account /></SettingsLayout></ProtectedRoute>}
       />
       <Route
         path="/settings/gmail"
-        element={<ProtectedRoute><GmailSettings /></ProtectedRoute>}
+        element={<ProtectedRoute><SettingsLayout><GmailSettings /></SettingsLayout></ProtectedRoute>}
+      />
+      <Route
+        path="/settings/recycle-bin"
+        element={<ProtectedRoute adminOnly><SettingsLayout><RecycleBin /></SettingsLayout></ProtectedRoute>}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

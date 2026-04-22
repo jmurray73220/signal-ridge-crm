@@ -1,8 +1,8 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../services/prisma';
+import { rawPrisma } from '../services/prisma';
+import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 export async function getInitiatives(req: AuthRequest, res: Response) {
   const { status, priority, entity } = req.query;
@@ -120,6 +120,8 @@ export async function updateInitiative(req: AuthRequest, res: Response) {
   const { title, description, status, priority, startDate, targetDate, primaryEntityId } = req.body;
 
   try {
+    const before = await prisma.initiative.findUnique({ where: { id } });
+    if (!before || before.deletedAt) return res.status(404).json({ error: 'Not found' });
     const initiative = await prisma.initiative.update({
       where: { id },
       data: {
@@ -134,6 +136,13 @@ export async function updateInitiative(req: AuthRequest, res: Response) {
       },
       include: { primaryEntity: { select: { id: true, name: true, entityType: true } } },
     });
+    await logUpdate({
+      entityType: 'Initiative',
+      id,
+      userId: req.user?.userId || null,
+      before: before as unknown as Record<string, unknown>,
+      after: initiative as unknown as Record<string, unknown>,
+    });
     return res.json(initiative);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
@@ -142,10 +151,51 @@ export async function updateInitiative(req: AuthRequest, res: Response) {
 
 export async function deleteInitiative(req: AuthRequest, res: Response) {
   const { id } = req.params;
+  const userId = req.user?.userId || null;
   try {
-    await prisma.initiative.delete({ where: { id } });
-    return res.json({ message: 'Initiative deleted' });
+    const existing = await prisma.initiative.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+
+    // Cascade: any workflow track pointing at this initiative gets soft-deleted
+    // too, along with its SOW. Must use rawPrisma because workflow tracks
+    // may already be soft-deleted (we still want to know about them).
+    const linkedTracks = await rawPrisma.workflowTrack.findMany({
+      where: { initiativeId: id, deletedAt: null },
+      include: { sow: { select: { id: true, title: true, status: true } } },
+    });
+    for (const t of linkedTracks) {
+      if (t.sow) {
+        await softDelete({
+          modelName: 'workflowSOW',
+          entityType: 'WorkflowSOW',
+          id: t.sow.id,
+          userId,
+          snapshot: t.sow as unknown as Record<string, unknown>,
+        });
+      }
+      await softDelete({
+        modelName: 'workflowTrack',
+        entityType: 'WorkflowTrack',
+        id: t.id,
+        userId,
+        snapshot: t as unknown as Record<string, unknown>,
+      });
+    }
+
+    await softDelete({
+      modelName: 'initiative',
+      entityType: 'Initiative',
+      id,
+      userId,
+      snapshot: existing as unknown as Record<string, unknown>,
+    });
+    return res.json({
+      message: linkedTracks.length > 0
+        ? `Initiative moved to recycle bin (plus ${linkedTracks.length} workflow track(s))`
+        : 'Initiative moved to recycle bin',
+    });
   } catch (err) {
+    console.error('[deleteInitiative]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

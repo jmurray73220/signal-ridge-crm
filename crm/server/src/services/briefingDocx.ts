@@ -3,9 +3,7 @@ import {
   AlignmentType, BorderStyle, ImageRun, Table, TableRow, TableCell,
   WidthType, ShadingType,
 } from 'docx';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from './prisma';
 
 interface BriefingData {
   officeName: string;

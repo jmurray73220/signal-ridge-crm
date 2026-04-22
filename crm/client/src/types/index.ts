@@ -1,4 +1,5 @@
 export type UserRole = 'Admin' | 'Editor' | 'Viewer';
+export type WorkflowRole = 'WorkflowAdmin' | 'WorkflowEditor' | 'WorkflowViewer';
 export type EntityType = 'CongressionalOffice' | 'GovernmentOrganization' | 'Company' | 'Client' | 'Other';
 export type Chamber = 'Senate' | 'House';
 export type Party = 'Republican' | 'Democrat' | 'Independent';
@@ -13,6 +14,9 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
+  workflowRole?: WorkflowRole | null;
+  workflowClientId?: string | null;
+  workflowClient?: { id: string; name: string } | null;
   mustChangePassword: boolean;
   lastLogin?: string;
   isActive?: boolean;

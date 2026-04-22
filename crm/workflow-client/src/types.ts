@@ -73,6 +73,7 @@ export interface WorkflowTrack {
   status: TrackStatus;
   sortOrder: number;
   phases: WorkflowPhase[];
+  sow?: { id: string; title: string; status: SOWStatus; updatedAt: string } | null;
 }
 
 export interface WorkflowComment {
@@ -84,24 +85,49 @@ export interface WorkflowComment {
   createdBy: { id: string; firstName: string; lastName: string; email: string } | null;
 }
 
+export type DifferentiationLayer = 'Layer1' | 'Layer2' | 'Layer3' | 'Layer4' | 'CrossLayer';
+
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface WorkflowSOW {
   id: string;
   workflowClientId: string;
-  trackId: string | null;
   title: string;
-  content: string;
+  targetFundingVehicle: string | null;
+  targetAgency: string | null;
+  periodOfPerformance: string | null;
+  budget: string | null;
+  differentiationLayer: DifferentiationLayer | null;
+  trlStatement: string | null;
+  scope: string;
+  keyPersonnel: string;
+  deliverables: string;      // JSON-encoded string[]
+  draftingChecklist: string; // JSON-encoded ChecklistItem[]
+  content: string;           // legacy freeform, kept for overlap detection on older SOWs
   version: number;
   status: SOWStatus;
   createdAt: string;
   updatedAt: string;
+  trackId?: string | null;
   track?: { id: string; title: string } | null;
   createdBy?: { id: string; firstName: string; lastName: string } | null;
   versions?: Array<{
     id: string;
     version: number;
     content: string;
+    snapshotJson: string;
     createdAt: string;
     createdBy?: { id: string; firstName: string; lastName: string } | null;
   }>;
   comments?: WorkflowComment[];
+}
+
+export interface IntegrateReport {
+  sowTitle: string;
+  trackTitle: string;
+  items: Array<{ kind: 'ok' | 'warn' | 'suggest'; text: string }>;
 }

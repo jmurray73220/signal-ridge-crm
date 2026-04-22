@@ -1,8 +1,6 @@
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
+import prisma from './prisma';
 import Anthropic from '@anthropic-ai/sdk';
-
-const prisma = new PrismaClient();
 
 function makeOAuth2Client() {
   return new google.auth.OAuth2(

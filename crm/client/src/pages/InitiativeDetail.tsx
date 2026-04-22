@@ -11,6 +11,7 @@ import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { InitiativeModal } from '../components/InitiativeModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { InitiativeContactsTab } from '../components/InitiativeContactsTab';
+import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -490,11 +491,15 @@ export function InitiativeDetail() {
         />
       )}
 
+      <ChangeLogPanel entityType="Initiative" entityId={i.id} />
+
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="rounded-xl p-6 max-w-sm w-full" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
             <h3 className="text-base font-semibold mb-2" style={{ color: '#e6edf3' }}>Delete Initiative?</h3>
-            <p className="text-sm mb-6" style={{ color: '#8b949e' }}>This will permanently delete "{i.title}" and all associated data.</p>
+            <p className="text-sm mb-6" style={{ color: '#8b949e' }}>
+              "{i.title}" will be moved to the recycle bin. If any workflow tracks are linked to this initiative, they'll be deleted too (restorable within 90 days from Settings → Recycle Bin).
+            </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="btn-secondary">Cancel</button>
               <button onClick={() => deleteInitiative.mutate()} className="btn-danger">Delete</button>
