@@ -86,7 +86,6 @@ export function RecycleBin() {
             list.length === 0 ? null : (
               <TypeSection
                 key={type}
-                typeKey={type}
                 label={TYPE_LABELS[type] || type}
                 items={list}
                 onRestore={(id) => restore.mutate({ entityType: type, id })}
@@ -101,13 +100,11 @@ export function RecycleBin() {
 }
 
 function TypeSection({
-  typeKey,
   label,
   items,
   onRestore,
   onPurge,
 }: {
-  typeKey: string;
   label: string;
   items: RecycleBinItem[];
   onRestore: (id: string) => void;
