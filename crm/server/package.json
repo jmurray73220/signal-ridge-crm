@@ -7,7 +7,8 @@
     "start": "node dist/src/index.js",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "mint:key": "ts-node src/scripts/mintApiKey.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",

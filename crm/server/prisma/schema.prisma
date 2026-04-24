@@ -11,22 +11,22 @@ datasource db {
 }
 
 model User {
-  id                 String    @id @default(uuid())
-  email              String    @unique
+  id                 String          @id @default(uuid())
+  email              String          @unique
   passwordHash       String
   firstName          String
   lastName           String
-  role               String    @default("Viewer") // UserRole: Admin | Editor | Viewer
-  workflowRole       String?   // WorkflowRole: WorkflowAdmin | WorkflowEditor | WorkflowViewer
+  role               String          @default("Viewer") // UserRole: Admin | Editor | Viewer
+  workflowRole       String? // WorkflowRole: WorkflowAdmin | WorkflowEditor | WorkflowViewer
   workflowClientId   String?
   workflowClient     WorkflowClient? @relation("WorkflowClientUsers", fields: [workflowClientId], references: [id])
-  isActive           Boolean   @default(true)
-  mustChangePassword Boolean   @default(false)
+  isActive           Boolean         @default(true)
+  mustChangePassword Boolean         @default(false)
   lastLogin          DateTime?
   resetToken         String?
   resetTokenExpiry   DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   // Audit trail relations
   contactsCreated     Contact[]     @relation("ContactCreatedBy")
@@ -51,6 +51,31 @@ model User {
 
   // Change log author
   changeLogEntries ChangeLog[] @relation("ChangeLogUser")
+
+  // API keys that act as this user
+  apiKeys ApiKey[] @relation("ApiKeyUser")
+}
+
+// ─── Bot / Machine API Keys ──────────────────────────────────────────────────
+//
+// Each row is a single API key that can be passed as
+// `Authorization: Bearer <plaintext>`. We store only the SHA-256 hash of the
+// plaintext; `keyPrefix` is the first 12 chars kept in the clear for display
+// and humans identifying the key in the DB. Bots act as a real User row, so
+// `userId` carries the audit trail. Revoke by setting `revokedAt`.
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  label      String
+  keyHash    String    @unique
+  keyPrefix  String
+  userId     String
+  user       User      @relation("ApiKeyUser", fields: [userId], references: [id])
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([keyHash])
 }
 
 model Contact {
@@ -92,7 +117,7 @@ model Contact {
 model Entity {
   id          String  @id @default(uuid())
   name        String
-  entityType  String  // EntityType: CongressionalOffice | GovernmentOrganization | Company | NGO | Other
+  entityType  String // EntityType: CongressionalOffice | GovernmentOrganization | Company | NGO | Other
   website     String?
   description String?
   address     String?
@@ -130,7 +155,7 @@ model Entity {
 
   contacts        Contact[]
   pendingEmails   GmailPendingEmail[]
-  initiatives     Initiative[]     @relation("PrimaryEntity")
+  initiatives     Initiative[]        @relation("PrimaryEntity")
   initiativeLinks InitiativeEntity[]
   interactions    Interaction[]
   tasks           Task[]
@@ -141,15 +166,15 @@ model Entity {
 }
 
 model Initiative {
-  id              String  @id @default(uuid())
+  id              String    @id @default(uuid())
   title           String
   description     String?
-  status          String  @default("Pipeline") // InitiativeStatus: Active | Pipeline | OnHold | Closed
-  priority        String  @default("Medium")   // InitiativePriority: High | Medium | Low
+  status          String    @default("Pipeline") // InitiativeStatus: Active | Pipeline | OnHold | Closed
+  priority        String    @default("Medium") // InitiativePriority: High | Medium | Low
   startDate       DateTime?
   targetDate      DateTime?
   primaryEntityId String?
-  primaryEntity   Entity? @relation("PrimaryEntity", fields: [primaryEntityId], references: [id])
+  primaryEntity   Entity?   @relation("PrimaryEntity", fields: [primaryEntityId], references: [id])
 
   // Soft delete
   deletedAt       DateTime?
@@ -195,14 +220,14 @@ model InitiativeEntity {
 }
 
 model Interaction {
-  id             String    @id @default(uuid())
-  type           String    // InteractionType: Meeting | Call | Email | Hearing | Briefing | Event | Other
+  id             String      @id @default(uuid())
+  type           String // InteractionType: Meeting | Call | Email | Hearing | Briefing | Event | Other
   date           DateTime
   subject        String
   notes          String?
   gmailThreadUrl String?
   entityId       String?
-  entity         Entity?    @relation(fields: [entityId], references: [id])
+  entity         Entity?     @relation(fields: [entityId], references: [id])
   initiativeId   String?
   initiative     Initiative? @relation(fields: [initiativeId], references: [id])
 
@@ -261,22 +286,22 @@ model Task {
 }
 
 model Reminder {
-  id            String    @id @default(uuid())
-  title         String
-  notes         String?
-  remindAt      DateTime
-  completed     Boolean   @default(false)
-  completedAt   DateTime?
+  id          String    @id @default(uuid())
+  title       String
+  notes       String?
+  remindAt    DateTime
+  completed   Boolean   @default(false)
+  completedAt DateTime?
 
   contactId     String?
   entityId      String?
   initiativeId  String?
   interactionId String?
 
-  contact      Contact?     @relation(fields: [contactId], references: [id])
-  entity       Entity?      @relation(fields: [entityId], references: [id])
-  initiative   Initiative?  @relation(fields: [initiativeId], references: [id])
-  interaction  Interaction? @relation(fields: [interactionId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  entity      Entity?      @relation(fields: [entityId], references: [id])
+  initiative  Initiative?  @relation(fields: [initiativeId], references: [id])
+  interaction Interaction? @relation(fields: [interactionId], references: [id])
 
   // Soft delete
   deletedAt       DateTime?
@@ -309,7 +334,7 @@ model ChangeLog {
   entityId   String
   userId     String?
   user       User?    @relation("ChangeLogUser", fields: [userId], references: [id])
-  action     String   // create | update | delete | restore | purge
+  action     String // create | update | delete | restore | purge
   diff       String   @default("{}") // JSON string
   createdAt  DateTime @default(now())
 
@@ -320,12 +345,12 @@ model ChangeLog {
 // ─── CRM Settings ────────────────────────────────────────────────────────────
 
 model CrmSettings {
-  id              String  @id @default("singleton")
-  majorityParty   String  @default("Republican") // Republican | Democrat
-  logoData        String? // Base64-encoded logo image
-  logoMimeType    String? // e.g., image/png
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default("singleton")
+  majorityParty String   @default("Republican") // Republican | Democrat
+  logoData      String? // Base64-encoded logo image
+  logoMimeType  String? // e.g., image/png
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ─── Gmail Sync ───────────────────────────────────────────────────────────────
@@ -371,40 +396,40 @@ model GmailPendingEmail {
 model BudgetDocument {
   id            String   @id @default(uuid())
   name          String?
-  documentType  String   // J-Book, NDAA, Appropriations Bill, etc.
+  documentType  String // J-Book, NDAA, Appropriations Bill, etc.
   fiscalYear    String
-  serviceBranch String   // Army, Navy, Air Force, Space Force, Defense-Wide, Congress, etc.
-  extractedText String   // Full text of the document
+  serviceBranch String // Army, Navy, Air Force, Space Force, Defense-Wide, Congress, etc.
+  extractedText String // Full text of the document
   createdAt     DateTime @default(now())
 
   conversations BudgetConversation[]
 }
 
 model BudgetConversation {
-  id               String   @id @default(uuid())
+  id               String         @id @default(uuid())
   budgetDocumentId String
   budgetDocument   BudgetDocument @relation(fields: [budgetDocumentId], references: [id], onDelete: Cascade)
-  messages         String   @default("[]") // JSON array of messages
-  createdAt        DateTime @default(now())
+  messages         String         @default("[]") // JSON array of messages
+  createdAt        DateTime       @default(now())
 
   links BudgetLink[]
 }
 
 model BudgetLink {
-  id                   String   @id @default(uuid())
+  id                   String             @id @default(uuid())
   budgetConversationId String
   budgetConversation   BudgetConversation @relation(fields: [budgetConversationId], references: [id], onDelete: Cascade)
-  entityType           String   // CongressionalOffice | GovernmentOrganization | Company
+  entityType           String // CongressionalOffice | GovernmentOrganization | Company
   entityId             String
   note                 String?
-  createdAt            DateTime @default(now())
+  createdAt            DateTime           @default(now())
 }
 
 model ReportTemplate {
   id          String   @id @default(uuid())
   name        String
   description String?
-  fileData    String   // Base64-encoded .docx file
+  fileData    String // Base64-encoded .docx file
   createdAt   DateTime @default(now())
 }
 
@@ -413,30 +438,30 @@ model ReportTemplate {
 model WorkflowClient {
   id        String   @id @default(uuid())
   name      String
-  clientId  String?  // Links to CRM Entity.id (soft reference; not FK to avoid coupling)
+  clientId  String? // Links to CRM Entity.id (soft reference; not FK to avoid coupling)
   createdAt DateTime @default(now())
 
   tracks WorkflowTrack[]
   sows   WorkflowSOW[]
-  users  User[]        @relation("WorkflowClientUsers")
+  users  User[]          @relation("WorkflowClientUsers")
 }
 
 model WorkflowTrack {
-  id               String   @id @default(uuid())
+  id               String         @id @default(uuid())
   workflowClientId String
   workflowClient   WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
   title            String
   description      String?
   fundingVehicle   String?
-  status           String   @default("Active") // Active | OnHold | Completed | Archived
-  sortOrder        Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  status           String         @default("Active") // Active | OnHold | Completed | Archived
+  sortOrder        Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   // Mirror into CRM Initiative (soft link — not FK so the workflow tool stays
   // decoupled from CRM table changes). Tracks create a companion Initiative in
   // the CRM with primaryEntity = the workflow client's CRM Entity.
-  initiativeId     String?
+  initiativeId String?
 
   // Soft delete
   deletedAt       DateTime?
@@ -447,51 +472,51 @@ model WorkflowTrack {
 }
 
 model WorkflowPhase {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   trackId     String
   track       WorkflowTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
   title       String
   description String?
   budget      String?
   timeframe   String?
-  status      String   @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   milestones WorkflowMilestone[]
 }
 
 model WorkflowMilestone {
-  id          String    @id @default(uuid())
+  id          String        @id @default(uuid())
   phaseId     String
   phase       WorkflowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
   title       String
   description String?
   dueDate     DateTime?
-  status      String    @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
   completedAt DateTime?
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   actionItems WorkflowActionItem[]
 }
 
 model WorkflowActionItem {
-  id          String    @id @default(uuid())
+  id          String            @id @default(uuid())
   milestoneId String
   milestone   WorkflowMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   title       String
   description String?
   notes       String?
-  status      String    @default("Todo") // Todo | InProgress | Done | Blocked
+  status      String            @default("Todo") // Todo | InProgress | Done | Blocked
   assignedTo  String?
   dueDate     DateTime?
   completedAt DateTime?
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   // Soft delete
   deletedAt       DateTime?
@@ -506,30 +531,30 @@ model WorkflowActionItem {
 }
 
 model WorkflowSOW {
-  id                    String   @id @default(uuid())
-  workflowClientId      String
-  workflowClient        WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
+  id                   String         @id @default(uuid())
+  workflowClientId     String
+  workflowClient       WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
   // One optional SOW per track (unique enforces at-most-one).
-  trackId               String?  @unique
-  track                 WorkflowTrack? @relation(fields: [trackId], references: [id], onDelete: SetNull)
-  title                 String
+  trackId              String?        @unique
+  track                WorkflowTrack? @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  title                String
   // Structured fields
-  targetFundingVehicle  String?
-  targetAgency          String?
-  periodOfPerformance   String?
-  budget                String?
-  differentiationLayer  String?  // Layer1 | Layer2 | Layer3 | Layer4 | CrossLayer
-  trlStatement          String?
-  scope                 String   @default("")           // Rich text / markdown narrative
-  keyPersonnel          String   @default("")
-  deliverables          String   @default("[]")         // JSON array of strings
-  draftingChecklist     String   @default("[]")         // JSON array of {id,title,done}
+  targetFundingVehicle String?
+  targetAgency         String?
+  periodOfPerformance  String?
+  budget               String?
+  differentiationLayer String? // Layer1 | Layer2 | Layer3 | Layer4 | CrossLayer
+  trlStatement         String?
+  scope                String         @default("") // Rich text / markdown narrative
+  keyPersonnel         String         @default("")
+  deliverables         String         @default("[]") // JSON array of strings
+  draftingChecklist    String         @default("[]") // JSON array of {id,title,done}
   // Legacy free-form content kept for backfill; new UI uses `scope` instead.
-  content               String   @default("")
-  version               Int      @default(1)
-  status                String   @default("Draft")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  content              String         @default("")
+  version              Int            @default(1)
+  status               String         @default("Draft")
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   // Soft delete
   deletedAt       DateTime?
@@ -538,31 +563,31 @@ model WorkflowSOW {
   createdByUserId String?
   createdBy       User?   @relation("WorkflowSOWCreatedBy", fields: [createdByUserId], references: [id])
 
-  versions         WorkflowSOWVersion[]
-  comments         WorkflowComment[]
+  versions WorkflowSOWVersion[]
+  comments WorkflowComment[]
 }
 
 model WorkflowSOWVersion {
-  id           String   @id @default(uuid())
+  id           String      @id @default(uuid())
   sowId        String
   sow          WorkflowSOW @relation(fields: [sowId], references: [id], onDelete: Cascade)
   content      String
-  snapshotJson String   @default("{}") // Full structured-field snapshot at this version
+  snapshotJson String      @default("{}") // Full structured-field snapshot at this version
   version      Int
-  createdAt    DateTime @default(now())
+  createdAt    DateTime    @default(now())
 
   createdByUserId String?
   createdBy       User?   @relation("WorkflowSOWVersionCreatedBy", fields: [createdByUserId], references: [id])
 }
 
 model WorkflowComment {
-  id           String   @id @default(uuid())
+  id           String              @id @default(uuid())
   actionItemId String?
   actionItem   WorkflowActionItem? @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
   sowId        String?
   sow          WorkflowSOW?        @relation(fields: [sowId], references: [id], onDelete: Cascade)
   content      String
-  createdAt    DateTime @default(now())
+  createdAt    DateTime            @default(now())
 
   createdByUserId String?
   createdBy       User?   @relation("WorkflowCommentCreatedBy", fields: [createdByUserId], references: [id])

@@ -21,6 +21,7 @@ import reportTemplateRoutes from './routes/reportTemplates';
 import settingsRoutes from './routes/settings';
 import workflowRoutes from './routes/workflow';
 import recycleBinRoutes from './routes/recycleBin';
+import botRoutes from './routes/bot';
 import { errorHandler } from './middleware/errorHandler';
 import { startBackgroundSync } from './services/gmail';
 
@@ -29,9 +30,25 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// ─── CORS ────────────────────────────────────────────────────────────────────
+// Browser UI uses CLIENT_URL with credentials. Bot traffic is server-to-server
+// (curl/axios from a VPS — CORS does not apply) but we still allow a
+// comma-separated BOT_CORS_ORIGINS list so a browser-based bot tool could hit
+// /api/bot/* if needed later. '*' is supported but only when credentials are
+// not required, so the bot branch does not set credentials:true.
+const uiOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+const botOrigins = (process.env.BOT_CORS_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use('/api/bot', cors({
+  origin: botOrigins.length === 0 || botOrigins.includes('*') ? true : botOrigins,
+  credentials: false,
+}));
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: uiOrigin,
   credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -53,6 +70,7 @@ app.use('/api/budgets', budgetRoutes);
 app.use('/api/report-templates', reportTemplateRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/workflow', workflowRoutes);
+app.use('/api/bot', botRoutes);
 app.use('/api', recycleBinRoutes);
 
 // Gmail routes (mixed auth/api prefix — handled internally in the router)
