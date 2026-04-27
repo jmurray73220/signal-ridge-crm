@@ -17,6 +17,7 @@ router.get('/clients', ctl.listClients);
 // List CRM "Client" entities so Admin can link a new WorkflowClient to one.
 // Must be declared before /clients/:id so Express doesn't treat "crm-entities" as an id.
 router.get('/clients/crm-entities', requireWorkflowAdmin, ctl.listCrmClientEntities);
+router.post('/clients/backfill-from-crm', requireWorkflowAdmin, ctl.backfillClientsFromCrm);
 router.get('/clients/:id', ctl.getClient);
 router.get('/clients/:id/assignees', ctl.listAssignees);
 router.post('/clients', requireWorkflowAdmin, ctl.createClient);
@@ -31,6 +32,11 @@ router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);
 router.delete('/tracks/:id', requireWorkflowAdmin, ctl.deleteTrack);
 // Singular alias per spec
 router.delete('/track/:id', requireWorkflowAdmin, ctl.deleteTrack);
+
+// Orphan CRM initiatives — visible in workflow Dashboard so initiatives
+// created directly in the CRM aren't invisible here.
+router.get('/orphan-initiatives', ctl.listOrphanInitiatives);
+router.post('/orphan-initiatives/:initiativeId/promote', requireWorkflowAdmin, ctl.promoteInitiativeToTrack);
 
 // Phases
 router.post('/phases', requireWorkflowAdmin, ctl.createPhase);

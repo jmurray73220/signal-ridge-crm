@@ -32,6 +32,15 @@ export async function createClient(name: string, clientId?: string) {
   const { data } = await api.post('/api/workflow/clients', { name, clientId });
   return data;
 }
+export interface BackfillResult {
+  created: number;
+  alreadyExisted: number;
+  items: Array<{ id: string; name: string; clientId: string | null }>;
+}
+export async function backfillClientsFromCrm(): Promise<BackfillResult> {
+  const { data } = await api.post('/api/workflow/clients/backfill-from-crm');
+  return data;
+}
 
 // Tracks
 export async function listTracks(workflowClientId: string) {
@@ -59,6 +68,26 @@ export async function getTrack(id: string) {
 export async function deleteTrack(id: string) {
   // Use the singular alias per spec — server accepts both paths
   await api.delete(`/api/workflow/track/${id}`);
+}
+
+// Orphan CRM initiatives — primary-entity matched, no companion track yet
+export interface OrphanInitiative {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  startDate: string | null;
+  targetDate: string | null;
+  createdAt: string;
+}
+export async function listOrphanInitiatives(workflowClientId: string): Promise<OrphanInitiative[]> {
+  const { data } = await api.get('/api/workflow/orphan-initiatives', { params: { workflowClientId } });
+  return data;
+}
+export async function promoteInitiativeToTrack(initiativeId: string, workflowClientId: string) {
+  const { data } = await api.post(`/api/workflow/orphan-initiatives/${initiativeId}/promote`, { workflowClientId });
+  return data;
 }
 
 // Phases

@@ -137,6 +137,25 @@ export async function createEntity(req: AuthRequest, res: Response) {
         updatedByUserId: req.user!.userId,
       },
     });
+    // Companion WorkflowClient: every CRM Entity with type 'Client' should
+    // have a matching WorkflowClient so initiatives for that client can be
+    // managed in the workflow tool. Soft-link via WorkflowClient.clientId.
+    if (entity.entityType === 'Client') {
+      try {
+        const existing = await prisma.workflowClient.findFirst({
+          where: { clientId: entity.id },
+        });
+        if (!existing) {
+          await prisma.workflowClient.create({
+            data: { name: entity.name, clientId: entity.id },
+          });
+        }
+      } catch (mirrorErr) {
+        console.error('[createEntity] WorkflowClient mirror failed:', mirrorErr);
+        // Non-fatal — the CRM entity was still created.
+      }
+    }
+
     return res.status(201).json(parseEntityArrayFields(entity));
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });

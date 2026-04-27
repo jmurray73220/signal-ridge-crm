@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Users, Briefcase, X } from 'lucide-react';
+import { Plus, Users, Briefcase, X, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   listClients,
   listCrmClientEntities,
   createClient,
+  backfillClientsFromCrm,
   listWorkflowUsers,
   setUserWorkflowRole,
 } from '../api';
@@ -54,12 +55,40 @@ export function Admin() {
 function ClientsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const { data } = useQuery<WorkflowClient[]>({ queryKey: ['clients'], queryFn: listClients });
   const [open, setOpen] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+
+  async function runBackfill() {
+    setBackfilling(true);
+    try {
+      const result = await backfillClientsFromCrm();
+      if (result.created === 0) {
+        toast(`All ${result.alreadyExisted} CRM clients already linked.`);
+      } else {
+        toast.success(`Created ${result.created} workflow client${result.created === 1 ? '' : 's'} from CRM.`);
+      }
+      qc.invalidateQueries({ queryKey: ['clients'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Backfill failed');
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   return (
     <div>
-      <button className="btn-primary flex items-center gap-1 mb-4" onClick={() => setOpen(true)}>
-        <Plus size={14} /> Add client
-      </button>
+      <div className="flex items-center gap-2 mb-4">
+        <button className="btn-primary flex items-center gap-1" onClick={() => setOpen(true)}>
+          <Plus size={14} /> Add client
+        </button>
+        <button
+          className="btn-secondary flex items-center gap-1"
+          onClick={runBackfill}
+          disabled={backfilling}
+          title="Create a WorkflowClient for every CRM Entity with type 'Client' that doesn't already have one"
+        >
+          <Download size={14} /> {backfilling ? 'Backfilling…' : 'Backfill from CRM'}
+        </button>
+      </div>
       <div className="space-y-2">
         {data?.map((c) => (
           <div key={c.id} className="card flex items-center justify-between">

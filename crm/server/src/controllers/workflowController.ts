@@ -81,6 +81,47 @@ export async function createClient(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Create a WorkflowClient for every CRM Entity with entityType='Client' that
+ * doesn't already have one (matched by WorkflowClient.clientId == Entity.id).
+ * Idempotent — safe to re-run.
+ */
+export async function backfillClientsFromCrm(_req: AuthRequest, res: Response) {
+  try {
+    const [crmClients, existing] = await Promise.all([
+      prisma.entity.findMany({
+        where: { entityType: 'Client' },
+        select: { id: true, name: true },
+      }),
+      prisma.workflowClient.findMany({
+        where: { clientId: { not: null } },
+        select: { clientId: true },
+      }),
+    ]);
+    const existingIds = new Set(existing.map(e => e.clientId).filter((s): s is string => !!s));
+    const toCreate = crmClients.filter(c => !existingIds.has(c.id));
+
+    if (toCreate.length === 0) {
+      return res.json({ created: 0, alreadyExisted: crmClients.length, items: [] });
+    }
+
+    const created = await prisma.$transaction(
+      toCreate.map(c => prisma.workflowClient.create({
+        data: { name: c.name, clientId: c.id },
+      }))
+    );
+
+    return res.status(201).json({
+      created: created.length,
+      alreadyExisted: crmClients.length - created.length,
+      items: created.map(c => ({ id: c.id, name: c.name, clientId: c.clientId })),
+    });
+  } catch (err) {
+    console.error('[backfillClientsFromCrm]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 export async function updateClient(req: AuthRequest, res: Response) {
   const { id } = req.params;
   const { name, clientId } = req.body;
@@ -361,6 +402,98 @@ export async function deleteTrack(req: AuthRequest, res: Response) {
     return res.json({ message: 'Track moved to recycle bin' });
   } catch (err) {
     console.error('[deleteTrack]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── Orphan Initiatives ─────────────────────────────────────────────────────
+//
+// CRM Initiatives whose `primaryEntityId` matches the WorkflowClient's
+// `clientId` but which have no companion WorkflowTrack. The Dashboard renders
+// these alongside tracks so initiatives created directly in the CRM are
+// visible in the workflow tool, with a one-click "Promote to Track" path
+// for admins.
+
+export async function listOrphanInitiatives(req: AuthRequest, res: Response) {
+  const { workflowClientId } = req.query;
+  if (!workflowClientId) return res.status(400).json({ error: 'workflowClientId required' });
+  if (!assertClientAccess(req, workflowClientId as string)) return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const client = await prisma.workflowClient.findUnique({
+      where: { id: workflowClientId as string },
+    });
+    if (!client) return res.status(404).json({ error: 'Workflow client not found' });
+    if (!client.clientId) return res.json([]);
+
+    const linked = await prisma.workflowTrack.findMany({
+      where: { initiativeId: { not: null } },
+      select: { initiativeId: true },
+    });
+    const linkedIds = linked.map(t => t.initiativeId).filter((s): s is string => !!s);
+
+    const initiatives = await prisma.initiative.findMany({
+      where: {
+        primaryEntityId: client.clientId,
+        ...(linkedIds.length > 0 && { id: { notIn: linkedIds } }),
+      },
+      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        startDate: true,
+        targetDate: true,
+        createdAt: true,
+      },
+    });
+    return res.json(initiatives);
+  } catch (err) {
+    console.error('[listOrphanInitiatives]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function promoteInitiativeToTrack(req: AuthRequest, res: Response) {
+  const { initiativeId } = req.params;
+  const { workflowClientId } = req.body;
+  if (!workflowClientId) return res.status(400).json({ error: 'workflowClientId required' });
+  if (!assertClientAccess(req, workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const [initiative, client, existingTrack] = await Promise.all([
+      prisma.initiative.findUnique({ where: { id: initiativeId } }),
+      prisma.workflowClient.findUnique({ where: { id: workflowClientId } }),
+      prisma.workflowTrack.findFirst({ where: { initiativeId } }),
+    ]);
+
+    if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
+    if (!client) return res.status(404).json({ error: 'Workflow client not found' });
+    if (existingTrack) return res.status(409).json({ error: 'Initiative already linked to a track' });
+    if (initiative.primaryEntityId !== client.clientId) {
+      return res.status(400).json({ error: "Initiative's primary entity doesn't match this workflow client" });
+    }
+
+    const trackStatus =
+      initiative.status === 'Closed' ? 'Completed'
+      : initiative.status === 'OnHold' ? 'OnHold'
+      : 'Active';
+
+    const track = await prisma.workflowTrack.create({
+      data: {
+        workflowClientId,
+        title: initiative.title,
+        description: initiative.description || null,
+        status: trackStatus,
+        sortOrder: 0,
+        initiativeId: initiative.id,
+      },
+    });
+    return res.status(201).json(track);
+  } catch (err) {
+    console.error('[promoteInitiativeToTrack]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
