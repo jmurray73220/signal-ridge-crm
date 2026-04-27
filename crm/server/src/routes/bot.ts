@@ -33,6 +33,11 @@ import {
   updateTask,
   deleteTask,
 } from '../controllers/tasksController';
+import {
+  getBotInitiatives,
+  getBotInitiative,
+  patchBotInitiative,
+} from '../controllers/initiativesController';
 
 const router = Router();
 
@@ -79,5 +84,10 @@ router.get('/tasks', getTasks);
 router.post('/tasks', createTask);
 router.put('/tasks/:id', updateTask);
 router.delete('/tasks/:id', deleteTask);
+
+// Initiatives — read-only list/detail + whitelisted PATCH (status, description)
+router.get('/initiatives', getBotInitiatives);
+router.get('/initiatives/:id', getBotInitiative);
+router.patch('/initiatives/:id', patchBotInitiative);
 
 export default router;

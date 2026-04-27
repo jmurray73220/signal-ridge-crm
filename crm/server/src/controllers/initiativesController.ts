@@ -268,6 +268,120 @@ export async function reorderInitiativeContacts(req: AuthRequest, res: Response)
   }
 }
 
+// ─── Bot-specific shape ─────────────────────────────────────────────────────
+//
+// The bot/external-machine API expects a flatter shape than the CRM UI:
+//   client (alias for primaryEntity, scoped to id/name/entityType)
+//   tasks (id, title, completed, dueDate)
+//   contacts (id, firstName, lastName, title, entityName)
+// Soft-deleted rows are excluded automatically by the prisma extension (see
+// services/prisma.ts).
+
+const BOT_INITIATIVE_INCLUDE = {
+  primaryEntity: { select: { id: true, name: true, entityType: true } },
+  tasks: { select: { id: true, title: true, completed: true, dueDate: true } },
+  contacts: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: {
+      contact: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          title: true,
+          entity: { select: { name: true } },
+        },
+      },
+    },
+  },
+};
+
+function shapeBotInitiative(i: any) {
+  return {
+    id: i.id,
+    title: i.title,
+    description: i.description,
+    status: i.status,
+    priority: i.priority,
+    startDate: i.startDate,
+    targetDate: i.targetDate,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
+    client: i.primaryEntity,
+    tasks: i.tasks,
+    contacts: i.contacts.map((c: any) => ({
+      id: c.contact.id,
+      firstName: c.contact.firstName,
+      lastName: c.contact.lastName,
+      title: c.contact.title,
+      entityName: c.contact.entity?.name || null,
+    })),
+  };
+}
+
+export async function getBotInitiatives(_req: AuthRequest, res: Response) {
+  try {
+    const initiatives = await prisma.initiative.findMany({
+      include: BOT_INITIATIVE_INCLUDE,
+      orderBy: [{ status: 'asc' }, { priority: 'asc' }, { targetDate: 'asc' }],
+    });
+    return res.json(initiatives.map(shapeBotInitiative));
+  } catch (err) {
+    console.error('[getBotInitiatives]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function getBotInitiative(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const initiative = await prisma.initiative.findUnique({
+      where: { id },
+      include: BOT_INITIATIVE_INCLUDE,
+    });
+    if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
+    return res.json(shapeBotInitiative(initiative));
+  } catch (err) {
+    console.error('[getBotInitiative]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function patchBotInitiative(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  // Whitelist: only these fields are patchable via the bot. Anything else in
+  // the body (id, clientId, createdAt, relations, etc.) is ignored.
+  const { status, description } = req.body;
+
+  try {
+    const before = await prisma.initiative.findUnique({ where: { id } });
+    if (!before || before.deletedAt) return res.status(404).json({ error: 'Not found' });
+
+    const data: { status?: string; description?: string | null; updatedByUserId?: string } = {
+      updatedByUserId: req.user!.userId,
+    };
+    if (status !== undefined) data.status = status;
+    if (description !== undefined) data.description = description;
+
+    const initiative = await prisma.initiative.update({
+      where: { id },
+      data,
+      include: BOT_INITIATIVE_INCLUDE,
+    });
+    await logUpdate({
+      entityType: 'Initiative',
+      id,
+      userId: req.user?.userId || null,
+      before: before as unknown as Record<string, unknown>,
+      after: initiative as unknown as Record<string, unknown>,
+    });
+    return res.json(shapeBotInitiative(initiative));
+  } catch (err) {
+    console.error('[patchBotInitiative]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 export async function removeInitiativeEntity(req: AuthRequest, res: Response) {
   const { id, entityId } = req.params;
   try {
