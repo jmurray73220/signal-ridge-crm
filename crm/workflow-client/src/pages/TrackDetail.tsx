@@ -12,8 +12,21 @@ import {
   deleteSOW,
   deleteTrack,
   updateTrack,
+  updatePhase,
+  deletePhase,
+  updateMilestone,
+  deleteMilestone,
+  updateActionItem,
 } from '../api';
-import type { WorkflowTrack, WorkflowPhase, WorkflowMilestone, WorkflowActionItem } from '../types';
+import type {
+  WorkflowTrack,
+  WorkflowPhase,
+  WorkflowMilestone,
+  WorkflowActionItem,
+  PhaseStatus,
+  MilestoneStatus,
+  ActionItemStatus,
+} from '../types';
 import { StatusBadge } from './Dashboard';
 import { useAuth } from '../AuthContext';
 import { Modal, PromptModal, ConfirmModal } from '../components/Modal';
@@ -25,7 +38,7 @@ async function fetchTrack(id: string): Promise<WorkflowTrack> {
 
 type PromptTarget =
   | { kind: 'phase' }
-  | { kind: 'milestone'; phaseId: string; phaseTitle: string; sortOrder: number }
+  | { kind: 'step'; phaseId: string; phaseTitle: string; sortOrder: number }
   | { kind: 'action'; milestoneId: string; milestoneTitle: string; sortOrder: number };
 
 export function TrackDetail() {
@@ -33,6 +46,7 @@ export function TrackDetail() {
   const { user } = useAuth();
   const nav = useNavigate();
   const isAdmin = user?.workflowRole === 'WorkflowAdmin';
+  const canEditSteps = isAdmin || user?.workflowRole === 'WorkflowEditor';
   const qc = useQueryClient();
   const { data: track, isLoading } = useQuery({
     queryKey: ['track', id],
@@ -51,6 +65,14 @@ export function TrackDetail() {
   const [creatingSow, setCreatingSow] = useState(false);
   const [deleteSowOpen, setDeleteSowOpen] = useState(false);
   const [deletingSow, setDeletingSow] = useState(false);
+  const [phaseEdit, setPhaseEdit] = useState<WorkflowPhase | null>(null);
+  const [phaseDelete, setPhaseDelete] = useState<WorkflowPhase | null>(null);
+  const [phaseSaving, setPhaseSaving] = useState(false);
+  const [phaseDeleting, setPhaseDeleting] = useState(false);
+  const [stepEdit, setStepEdit] = useState<WorkflowMilestone | null>(null);
+  const [stepDelete, setStepDelete] = useState<WorkflowMilestone | null>(null);
+  const [stepSaving, setStepSaving] = useState(false);
+  const [stepDeleting, setStepDeleting] = useState(false);
 
   useEffect(() => {
     if (track) {
@@ -72,9 +94,9 @@ export function TrackDetail() {
       if (prompt.kind === 'phase') {
         await createPhase({ trackId: track!.id, title, sortOrder: track!.phases.length });
         toast.success('Phase added');
-      } else if (prompt.kind === 'milestone') {
+      } else if (prompt.kind === 'step') {
         await createMilestone({ phaseId: prompt.phaseId, title, sortOrder: prompt.sortOrder });
-        toast.success('Milestone added');
+        toast.success('Step added');
       } else if (prompt.kind === 'action') {
         await createActionItem({ milestoneId: prompt.milestoneId, title, sortOrder: prompt.sortOrder });
         toast.success('Action added');
@@ -137,6 +159,86 @@ export function TrackDetail() {
     }
   }
 
+  async function quickUpdateActionStatus(actionId: string, status: ActionItemStatus) {
+    try {
+      await updateActionItem(actionId, { status });
+      qc.invalidateQueries({ queryKey: ['track', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
+  async function saveStep(form: { title: string; description: string; dueDate: string; status: MilestoneStatus }) {
+    if (!stepEdit) return;
+    setStepSaving(true);
+    try {
+      await updateMilestone(stepEdit.id, {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null,
+        status: form.status,
+      });
+      toast.success('Step updated');
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      setStepEdit(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setStepSaving(false);
+    }
+  }
+
+  async function handleDeleteStep() {
+    if (!stepDelete) return;
+    setStepDeleting(true);
+    try {
+      await deleteMilestone(stepDelete.id);
+      toast.success('Step deleted');
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      setStepDelete(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setStepDeleting(false);
+    }
+  }
+
+  async function savePhase(form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus }) {
+    if (!phaseEdit) return;
+    setPhaseSaving(true);
+    try {
+      await updatePhase(phaseEdit.id, {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        budget: form.budget.trim() || null,
+        timeframe: form.timeframe.trim() || null,
+        status: form.status,
+      });
+      toast.success('Phase updated');
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      setPhaseEdit(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setPhaseSaving(false);
+    }
+  }
+
+  async function handleDeletePhase() {
+    if (!phaseDelete) return;
+    setPhaseDeleting(true);
+    try {
+      await deletePhase(phaseDelete.id);
+      toast.success('Phase deleted');
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      setPhaseDelete(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setPhaseDeleting(false);
+    }
+  }
+
   async function saveEdit() {
     if (!track) return;
     if (!editForm.title.trim()) {
@@ -164,8 +266,8 @@ export function TrackDetail() {
   const promptTitle =
     prompt?.kind === 'phase'
       ? 'New phase'
-      : prompt?.kind === 'milestone'
-      ? `New milestone in "${prompt.phaseTitle}"`
+      : prompt?.kind === 'step'
+      ? `New step in "${prompt.phaseTitle}"`
       : prompt?.kind === 'action'
       ? `New action item in "${prompt.milestoneTitle}"`
       : '';
@@ -252,14 +354,20 @@ export function TrackDetail() {
             key={phase.id}
             phase={phase}
             isAdmin={isAdmin}
-            onAddMilestone={() =>
+            canEditSteps={canEditSteps}
+            onEdit={() => setPhaseEdit(phase)}
+            onDelete={() => setPhaseDelete(phase)}
+            onAddStep={() =>
               setPrompt({
-                kind: 'milestone',
+                kind: 'step',
                 phaseId: phase.id,
                 phaseTitle: phase.title,
                 sortOrder: phase.milestones.length,
               })
             }
+            onEditStep={setStepEdit}
+            onDeleteStep={setStepDelete}
+            onActionStatusChange={quickUpdateActionStatus}
             onAddAction={(m) =>
               setPrompt({
                 kind: 'action',
@@ -329,7 +437,7 @@ export function TrackDetail() {
               <br />
               <br />
               This also deletes <span className="text-status-amber">all {track.phases.length} phase(s)</span>,
-              every milestone, every action item, and any comments beneath them.
+              every step, every action item, and any comments beneath them.
               {track.sow && (
                 <> The attached SOW <span className="text-accent">{track.sow.title}</span> will also be deleted.</>
               )}
@@ -338,6 +446,64 @@ export function TrackDetail() {
           }
           onConfirm={handleDelete}
           onCancel={() => setDeleteOpen(false)}
+        />
+      )}
+
+      {phaseEdit && (
+        <PhaseEditModal
+          phase={phaseEdit}
+          saving={phaseSaving}
+          onClose={() => setPhaseEdit(null)}
+          onSubmit={savePhase}
+        />
+      )}
+
+      {stepEdit && (
+        <StepEditModal
+          step={stepEdit}
+          saving={stepSaving}
+          onClose={() => setStepEdit(null)}
+          onSubmit={saveStep}
+        />
+      )}
+
+      {stepDelete && (
+        <ConfirmModal
+          title="Delete step"
+          danger
+          confirmLabel="Delete step"
+          loading={stepDeleting}
+          message={
+            <>
+              Delete <span className="text-accent font-medium">{stepDelete.title}</span>?
+              <br />
+              <br />
+              This also deletes <span className="text-status-amber">all {stepDelete.actionItems.length} action item(s)</span>{' '}
+              beneath it. This cannot be undone.
+            </>
+          }
+          onConfirm={handleDeleteStep}
+          onCancel={() => setStepDelete(null)}
+        />
+      )}
+
+      {phaseDelete && (
+        <ConfirmModal
+          title="Delete phase"
+          danger
+          confirmLabel="Delete phase"
+          loading={phaseDeleting}
+          message={
+            <>
+              Delete <span className="text-accent font-medium">{phaseDelete.title}</span>?
+              <br />
+              <br />
+              This also deletes <span className="text-status-amber">all {phaseDelete.milestones.length} step(s)</span>{' '}
+              and every action item beneath them. This cannot be undone.
+            </>
+          }
+          onConfirm={handleDeletePhase}
+          onCancel={() => setPhaseDelete(null)}
         />
       )}
 
@@ -394,15 +560,63 @@ export function TrackDetail() {
   );
 }
 
+const ACTION_STATUSES: ActionItemStatus[] = ['Todo', 'InProgress', 'Done', 'Blocked'];
+const STATUS_LABEL: Record<string, string> = {
+  NotStarted: 'Not Started',
+  InProgress: 'In Progress',
+  Completed: 'Completed',
+  Todo: 'Todo',
+  Done: 'Done',
+  Blocked: 'Blocked',
+};
+
+function StatusSelect<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: readonly T[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as T)}
+      onClick={(e) => e.stopPropagation()}
+      className="badge cursor-pointer bg-surface border border-border text-xs"
+      title="Change status"
+    >
+      {options.map((s) => (
+        <option key={s} value={s}>
+          {STATUS_LABEL[s] || s}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function PhaseBlock({
   phase,
   isAdmin,
-  onAddMilestone,
+  canEditSteps,
+  onEdit,
+  onDelete,
+  onAddStep,
+  onEditStep,
+  onDeleteStep,
+  onActionStatusChange,
   onAddAction,
 }: {
   phase: WorkflowPhase;
   isAdmin: boolean;
-  onAddMilestone: () => void;
+  canEditSteps: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddStep: () => void;
+  onEditStep: (m: WorkflowMilestone) => void;
+  onDeleteStep: (m: WorkflowMilestone) => void;
+  onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
   onAddAction: (m: WorkflowMilestone) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -421,15 +635,36 @@ function PhaseBlock({
           </div>
         </button>
         <div className="flex items-center gap-2">
+          {/* Phase status is auto-derived from steps — read-only badge. */}
           <StatusBadge status={phase.status} />
-          {isAdmin && (
+          {canEditSteps && (
             <button
-              onClick={onAddMilestone}
+              onClick={onAddStep}
               className="btn-ghost flex items-center gap-1 text-xs"
-              title="Add milestone"
+              title="Add step"
             >
-              <Plus size={12} /> Milestone
+              <Plus size={12} /> Step
             </button>
+          )}
+          {isAdmin && (
+            <>
+              <button
+                onClick={onDelete}
+                className="btn-ghost p-1 rounded hover:text-status-red"
+                title="Delete phase"
+                aria-label="Delete phase"
+              >
+                <Trash2 size={12} />
+              </button>
+              <button
+                onClick={onEdit}
+                className="btn-ghost p-1 rounded"
+                title="Edit phase"
+                aria-label="Edit phase"
+              >
+                <Pencil size={12} />
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -440,12 +675,15 @@ function PhaseBlock({
             <MilestoneBlock
               key={m.id}
               milestone={m}
-              isAdmin={isAdmin}
+              canEdit={canEditSteps}
+              onEdit={() => onEditStep(m)}
+              onDelete={() => onDeleteStep(m)}
               onAddAction={() => onAddAction(m)}
+              onActionStatusChange={onActionStatusChange}
             />
           ))}
           {phase.milestones.length === 0 && (
-            <div className="text-text-muted text-sm italic">No milestones</div>
+            <div className="text-text-muted text-sm italic">No steps</div>
           )}
         </div>
       )}
@@ -455,12 +693,18 @@ function PhaseBlock({
 
 function MilestoneBlock({
   milestone,
-  isAdmin,
+  canEdit,
+  onEdit,
+  onDelete,
   onAddAction,
+  onActionStatusChange,
 }: {
   milestone: WorkflowMilestone;
-  isAdmin: boolean;
+  canEdit: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
   onAddAction: () => void;
+  onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -479,18 +723,42 @@ function MilestoneBlock({
           </div>
         </button>
         <div className="flex items-center gap-2">
+          {/* Step status is auto-derived from its action items — read-only. */}
           <StatusBadge status={milestone.status} />
-          {isAdmin && (
-            <button onClick={onAddAction} className="btn-ghost flex items-center gap-1 text-xs" title="Add action">
-              <Plus size={12} />
-            </button>
+          {canEdit && (
+            <>
+              <button onClick={onAddAction} className="btn-ghost flex items-center gap-1 text-xs" title="Add action">
+                <Plus size={12} />
+              </button>
+              <button
+                onClick={onDelete}
+                className="btn-ghost p-1 rounded hover:text-status-red"
+                title="Delete step"
+                aria-label="Delete step"
+              >
+                <Trash2 size={12} />
+              </button>
+              <button
+                onClick={onEdit}
+                className="btn-ghost p-1 rounded"
+                title="Edit step"
+                aria-label="Edit step"
+              >
+                <Pencil size={12} />
+              </button>
+            </>
           )}
         </div>
       </div>
       {open && (
         <div className="mt-3 space-y-1.5 pl-6">
           {milestone.actionItems.map((ai) => (
-            <ActionRow key={ai.id} item={ai} />
+            <ActionRow
+              key={ai.id}
+              item={ai}
+              canEdit={canEdit}
+              onStatusChange={(s) => onActionStatusChange(ai.id, s)}
+            />
           ))}
           {milestone.actionItems.length === 0 && (
             <div className="text-text-muted text-xs italic">No action items</div>
@@ -501,13 +769,181 @@ function MilestoneBlock({
   );
 }
 
-function ActionRow({ item }: { item: WorkflowActionItem }) {
+function PhaseEditModal({
+  phase,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  phase: WorkflowPhase;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus }) => void;
+}) {
+  const [form, setForm] = useState({
+    title: phase.title,
+    description: phase.description || '',
+    budget: phase.budget || '',
+    timeframe: phase.timeframe || '',
+  });
+
   return (
-    <Link
-      to={`/action-items/${item.id}`}
-      className="flex items-start justify-between gap-3 p-2 rounded hover:bg-surface-alt border border-transparent hover:border-border"
-    >
-      <div className="flex-1 min-w-0">
+    <Modal title="Edit phase" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!form.title.trim()) {
+            toast.error('Title required');
+            return;
+          }
+          // Status is derived from steps — pass current value through unchanged.
+          onSubmit({ ...form, status: phase.status });
+        }}
+        className="space-y-3"
+      >
+        <div>
+          <label className="label">Title</label>
+          <input
+            className="input"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="e.g. Phase 1 — Discovery"
+            autoFocus
+            required
+          />
+        </div>
+        <p className="text-xs text-text-muted">
+          Status is auto-derived from this phase's steps and can't be set manually.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Budget</label>
+            <input
+              className="input"
+              value={form.budget}
+              onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
+              placeholder="e.g. $250k"
+            />
+          </div>
+          <div>
+            <label className="label">Timeframe</label>
+            <input
+              className="input"
+              value={form.timeframe}
+              onChange={(e) => setForm((f) => ({ ...f, timeframe: e.target.value }))}
+              placeholder="e.g. Q3 2026"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="label">Description</label>
+          <textarea
+            className="textarea"
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={saving || !form.title.trim()}>
+            {saving ? 'Saving…' : 'Save phase'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function StepEditModal({
+  step,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  step: WorkflowMilestone;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (form: { title: string; description: string; dueDate: string; status: MilestoneStatus }) => void;
+}) {
+  const [form, setForm] = useState({
+    title: step.title,
+    description: step.description || '',
+    dueDate: step.dueDate ? step.dueDate.slice(0, 10) : '',
+  });
+
+  return (
+    <Modal title="Edit step" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!form.title.trim()) {
+            toast.error('Title required');
+            return;
+          }
+          // Status is derived from action items — pass current value through unchanged.
+          onSubmit({ ...form, status: step.status });
+        }}
+        className="space-y-3"
+      >
+        <div>
+          <label className="label">Title</label>
+          <input
+            className="input"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            autoFocus
+            required
+          />
+        </div>
+        <p className="text-xs text-text-muted">
+          Status is auto-derived from this step's action items and can't be set manually.
+        </p>
+        <div>
+          <label className="label">Due date</label>
+          <input
+            type="date"
+            className="input"
+            value={form.dueDate}
+            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="label">Description</label>
+          <textarea
+            className="textarea"
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={saving || !form.title.trim()}>
+            {saving ? 'Saving…' : 'Save step'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ActionRow({
+  item,
+  canEdit,
+  onStatusChange,
+}: {
+  item: WorkflowActionItem;
+  canEdit: boolean;
+  onStatusChange: (s: ActionItemStatus) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 p-2 rounded hover:bg-surface-alt border border-transparent hover:border-border">
+      <Link to={`/action-items/${item.id}`} className="flex-1 min-w-0">
         <div className="text-sm">{item.title}</div>
         {item.description && (
           <div className="text-xs text-text-muted mt-0.5 line-clamp-2">{item.description}</div>
@@ -516,8 +952,12 @@ function ActionRow({ item }: { item: WorkflowActionItem }) {
           {item.assignedTo && <span>@{item.assignedTo}</span>}
           {item.dueDate && <span>Due {new Date(item.dueDate).toLocaleDateString()}</span>}
         </div>
-      </div>
-      <StatusBadge status={item.status} />
-    </Link>
+      </Link>
+      {canEdit ? (
+        <StatusSelect value={item.status} options={ACTION_STATUSES} onChange={onStatusChange} />
+      ) : (
+        <StatusBadge status={item.status} />
+      )}
+    </div>
   );
 }

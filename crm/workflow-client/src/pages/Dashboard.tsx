@@ -232,7 +232,7 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
         <div className="flex gap-2 mt-3 text-xs text-text-muted">
           <span>{stats.phases} phases</span>
           <span>·</span>
-          <span>{stats.milestones} milestones</span>
+          <span>{stats.milestones} steps</span>
           <span>·</span>
           <span>{stats.items} actions</span>
         </div>
@@ -302,7 +302,7 @@ function ListView({
                 <div className="font-semibold text-accent">{t.title}</div>
                 {t.description && <p className="text-sm text-text-muted mt-1">{t.description}</p>}
                 <div className="text-xs text-text-muted mt-2">
-                  {s.phases} phases · {s.milestones} milestones · {s.done}/{s.items} done
+                  {s.phases} phases · {s.milestones} steps · {s.done}/{s.items} done
                 </div>
               </div>
               <div className="flex items-center gap-3">

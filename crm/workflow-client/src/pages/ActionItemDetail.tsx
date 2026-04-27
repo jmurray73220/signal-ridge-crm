@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Send, User } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getActionItem, updateActionItem, createComment, listAssignees } from '../api';
+import { getActionItem, updateActionItem, createComment, listAssignees, listClients } from '../api';
 import type { Assignee } from '../api';
+import type { WorkflowClient } from '../types';
 import { useAuth } from '../AuthContext';
 import { StatusBadge } from './Dashboard';
 
@@ -29,6 +30,13 @@ export function ActionItemDetail() {
     queryFn: () => listAssignees(workflowClientId!),
     enabled: !!workflowClientId && canEdit,
   });
+
+  const { data: clients = [] } = useQuery<WorkflowClient[]>({
+    queryKey: ['clients'],
+    queryFn: listClients,
+    enabled: !!user?.workflowRole,
+  });
+  const clientName = clients.find(c => c.id === workflowClientId)?.name || 'this client';
 
   const [saving, setSaving] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -151,7 +159,7 @@ export function ActionItemDetail() {
               >
                 <option value="">— Unassigned —</option>
                 {assignees.filter((a) => a.kind === 'contact').length > 0 && (
-                  <optgroup label="Shadowgrid contacts">
+                  <optgroup label={`${clientName} contacts`}>
                     {assignees
                       .filter((a) => a.kind === 'contact')
                       .map((a) => (
@@ -175,7 +183,7 @@ export function ActionItemDetail() {
               </select>
               {assignees.length === 0 && (
                 <div className="text-xs text-text-muted mt-1">
-                  No contacts found. Link contacts to the Shadowgrid Entity in the CRM.
+                  No contacts found. Link contacts to the {clientName} entity in the CRM.
                 </div>
               )}
             </div>

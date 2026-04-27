@@ -99,6 +99,9 @@ export async function updatePhase(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/phases/${id}`, body);
   return data;
 }
+export async function deletePhase(id: string) {
+  await api.delete(`/api/workflow/phases/${id}`);
+}
 
 // Milestones
 export async function createMilestone(body: Record<string, unknown>) {
@@ -108,6 +111,9 @@ export async function createMilestone(body: Record<string, unknown>) {
 export async function updateMilestone(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/milestones/${id}`, body);
   return data;
+}
+export async function deleteMilestone(id: string) {
+  await api.delete(`/api/workflow/milestones/${id}`);
 }
 
 // Action items

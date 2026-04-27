@@ -43,10 +43,12 @@ router.post('/phases', requireWorkflowAdmin, ctl.createPhase);
 router.put('/phases/:id', requireWorkflowAdmin, ctl.updatePhase);
 router.delete('/phases/:id', requireWorkflowAdmin, ctl.deletePhase);
 
-// Milestones
-router.post('/milestones', requireWorkflowAdmin, ctl.createMilestone);
-router.put('/milestones/:id', requireWorkflowAdmin, ctl.updateMilestone);
-router.delete('/milestones/:id', requireWorkflowAdmin, ctl.deleteMilestone);
+// Milestones (UI label: "Steps") — Editors can create/update/delete since
+// step changes are routine operational work for anyone assigned to the
+// client. Client access is also enforced inside each controller.
+router.post('/milestones', requireWorkflowEditor, ctl.createMilestone);
+router.put('/milestones/:id', requireWorkflowEditor, ctl.updateMilestone);
+router.delete('/milestones/:id', requireWorkflowEditor, ctl.deleteMilestone);
 
 // Action items — Editors can update status/notes/assignedTo; Admin can do everything
 router.get('/action-items/:id', ctl.getActionItem);

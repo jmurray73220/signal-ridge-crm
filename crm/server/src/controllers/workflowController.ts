@@ -151,6 +151,45 @@ export async function deleteClient(req: AuthRequest, res: Response) {
 
 // ─── Tracks ───────────────────────────────────────────────────────────────
 
+/**
+ * Status cascade — manual at the action-item level, derived everywhere above:
+ *   actions (Todo|InProgress|Done|Blocked, manual)
+ *     → steps   (NotStarted|InProgress|Completed|Blocked, derived)
+ *       → phases (NotStarted|InProgress|Completed|Blocked, derived)
+ *
+ * Empty containers default to InProgress (per user: "if there are no steps,
+ * the phase should be in progress" — same rule applies to empty steps).
+ */
+function deriveStepStatus(actionItems: Array<{ status: string }>): string {
+  if (actionItems.length === 0) return 'InProgress';
+  if (actionItems.every(a => a.status === 'Done')) return 'Completed';
+  if (actionItems.some(a => a.status === 'Blocked')) return 'Blocked';
+  if (actionItems.every(a => a.status === 'Todo')) return 'NotStarted';
+  return 'InProgress';
+}
+
+function derivePhaseStatus(milestones: Array<{ status: string }>): string {
+  if (milestones.length === 0) return 'InProgress';
+  if (milestones.every(m => m.status === 'Completed')) return 'Completed';
+  if (milestones.some(m => m.status === 'Blocked')) return 'Blocked';
+  if (milestones.every(m => m.status === 'NotStarted')) return 'NotStarted';
+  return 'InProgress';
+}
+
+/**
+ * Apply derivation in order: steps first (so phases can read their derived
+ * status), then phases.
+ */
+function applyDerivedPhaseStatus<T extends { phases: Array<{ status: string; milestones: Array<{ status: string; actionItems: Array<{ status: string }> }> }> }>(track: T): T {
+  for (const phase of track.phases) {
+    for (const m of phase.milestones) {
+      m.status = deriveStepStatus(m.actionItems);
+    }
+    phase.status = derivePhaseStatus(phase.milestones);
+  }
+  return track;
+}
+
 export async function listTracks(req: AuthRequest, res: Response) {
   const { workflowClientId } = req.query;
   if (!workflowClientId) return res.status(400).json({ error: 'workflowClientId required' });
@@ -175,7 +214,7 @@ export async function listTracks(req: AuthRequest, res: Response) {
         },
       },
     });
-    return res.json(tracks);
+    return res.json(tracks.map(applyDerivedPhaseStatus));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
@@ -212,7 +251,7 @@ export async function getTrack(req: AuthRequest, res: Response) {
       where: { trackId: id },
       select: { id: true, title: true, status: true, updatedAt: true },
     });
-    return res.json({ ...track, sow });
+    return res.json({ ...applyDerivedPhaseStatus(track), sow });
   } catch (err) {
     console.error('[getTrack]', err);
     return res.status(500).json({ error: 'Server error' });
@@ -554,10 +593,33 @@ export async function deletePhase(req: AuthRequest, res: Response) {
 
 // ─── Milestones ───────────────────────────────────────────────────────────
 
+/**
+ * Resolve the workflowClientId that owns a phase or milestone (via the parent
+ * track). Returns null if the row is missing.
+ */
+async function clientIdForPhase(phaseId: string): Promise<string | null> {
+  const ph = await prisma.workflowPhase.findUnique({
+    where: { id: phaseId },
+    select: { track: { select: { workflowClientId: true } } },
+  });
+  return ph?.track?.workflowClientId ?? null;
+}
+async function clientIdForMilestone(milestoneId: string): Promise<string | null> {
+  const m = await prisma.workflowMilestone.findUnique({
+    where: { id: milestoneId },
+    select: { phase: { select: { track: { select: { workflowClientId: true } } } } },
+  });
+  return m?.phase?.track?.workflowClientId ?? null;
+}
+
 export async function createMilestone(req: AuthRequest, res: Response) {
   const { phaseId, title, description, dueDate, status, sortOrder } = req.body;
   if (!phaseId || !title) return res.status(400).json({ error: 'phaseId and title required' });
   try {
+    const cid = await clientIdForPhase(phaseId);
+    if (!cid) return res.status(404).json({ error: 'Phase not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
+
     const milestone = await prisma.workflowMilestone.create({
       data: {
         phaseId,
@@ -578,6 +640,10 @@ export async function updateMilestone(req: AuthRequest, res: Response) {
   const { id } = req.params;
   const { title, description, dueDate, status, sortOrder } = req.body;
   try {
+    const cid = await clientIdForMilestone(id);
+    if (!cid) return res.status(404).json({ error: 'Step not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
+
     const milestone = await prisma.workflowMilestone.update({
       where: { id },
       data: {
@@ -600,6 +666,10 @@ export async function updateMilestone(req: AuthRequest, res: Response) {
 export async function deleteMilestone(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const cid = await clientIdForMilestone(id);
+    if (!cid) return res.status(404).json({ error: 'Step not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
+
     await prisma.workflowMilestone.delete({ where: { id } });
     return res.json({ message: 'Deleted' });
   } catch (err) {

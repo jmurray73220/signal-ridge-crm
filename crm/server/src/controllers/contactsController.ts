@@ -3,23 +3,57 @@ import prisma from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
 
+/**
+ * Build the per-user contact scope. Users without a workflowClientId see all
+ * contacts (current behavior). Users assigned to a workflow client are
+ * limited to contacts whose primary entity is that client OR whose tags
+ * include the client name (loose tag-based fallback for legacy contacts).
+ * Returns null if the caller is unscoped, an array of OR conditions if
+ * scoped, or an empty array signal (returned as []) if the workflow client
+ * has no linked CRM entity.
+ */
+async function buildClientScope(req: AuthRequest): Promise<any[] | null> {
+  const wfClientId = req.user?.workflowClientId;
+  if (!wfClientId) return null;
+  const wfClient = await prisma.workflowClient.findUnique({
+    where: { id: wfClientId },
+    select: { name: true, clientId: true },
+  });
+  if (!wfClient || !wfClient.clientId) {
+    // Workflow user not linked to a CRM entity → see nothing rather than everything.
+    return [];
+  }
+  return [
+    { entityId: wfClient.clientId },
+    { tags: { contains: wfClient.name } },
+  ];
+}
+
 export async function getContacts(req: AuthRequest, res: Response) {
   const { entity, tag, name, rank, search } = req.query;
 
   const where: any = {};
+  const ands: any[] = [];
 
   if (name || search) {
     const q = (name || search) as string;
-    where.OR = [
+    ands.push({ OR: [
       { firstName: { contains: q } },
       { lastName: { contains: q } },
-    ];
+    ]});
   }
 
   if (entity) where.entityId = entity as string;
   if (rank) where.rank = { contains: rank as string };
 
   try {
+    const scope = await buildClientScope(req);
+    if (scope !== null) {
+      if (scope.length === 0) return res.json([]);
+      ands.push({ OR: scope });
+    }
+    if (ands.length > 0) where.AND = ands;
+
     const contacts = await prisma.contact.findMany({
       where,
       include: {
@@ -50,6 +84,15 @@ export async function getContacts(req: AuthRequest, res: Response) {
 export async function getContact(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const scope = await buildClientScope(req);
+    if (scope !== null) {
+      if (scope.length === 0) return res.status(404).json({ error: 'Contact not found' });
+      const allowed = await prisma.contact.findFirst({
+        where: { AND: [{ id }, { OR: scope }] },
+        select: { id: true },
+      });
+      if (!allowed) return res.status(404).json({ error: 'Contact not found' });
+    }
     const contact = await prisma.contact.findUnique({
       where: { id },
       include: {
