@@ -44,6 +44,8 @@ export const entitiesApi = {
   getContacts: (id: string) => api.get<Contact[]>(`/api/entities/${id}/contacts`),
   getInitiatives: (id: string) => api.get<Initiative[]>(`/api/entities/${id}/initiatives`),
   getInteractions: (id: string) => api.get<Interaction[]>(`/api/entities/${id}/interactions`),
+  backfillClientSelfTags: () =>
+    api.post<{ updated: number; scanned: number }>('/api/entities/backfill-client-self-tags'),
 };
 
 // Initiatives

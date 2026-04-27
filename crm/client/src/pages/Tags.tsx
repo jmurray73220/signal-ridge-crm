@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Tag, Users, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Users, Building2, Download } from 'lucide-react';
 import { contactsApi, entitiesApi } from '../api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +14,7 @@ export function Tags() {
   const [editValue, setEditValue] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
@@ -123,6 +124,32 @@ export function Tags() {
           <h1 className="text-2xl font-semibold" style={{ color: '#e6edf3' }}>Tags</h1>
           <p className="text-sm mt-0.5" style={{ color: '#8b949e' }}>{tagStats.length} tags in use</p>
         </div>
+        {user?.role === 'Admin' && (
+          <button
+            disabled={backfilling}
+            onClick={async () => {
+              setBackfilling(true);
+              try {
+                const r = await entitiesApi.backfillClientSelfTags();
+                if (r.data.updated === 0) {
+                  toast(`All ${r.data.scanned} clients already self-tagged.`);
+                } else {
+                  toast.success(`Self-tagged ${r.data.updated} client${r.data.updated === 1 ? '' : 's'}.`);
+                }
+                qc.invalidateQueries({ queryKey: ['entities'] });
+                qc.invalidateQueries({ queryKey: ['contacts'] });
+              } catch (err: any) {
+                toast.error(err?.response?.data?.error || 'Backfill failed');
+              } finally {
+                setBackfilling(false);
+              }
+            }}
+            className="btn-secondary flex items-center gap-1.5 text-sm"
+            title="Add each Client's name to its own tags so the tag exists in the data"
+          >
+            <Download size={14} /> {backfilling ? 'Backfilling…' : 'Backfill client tags'}
+          </button>
+        )}
       </div>
 
       {/* Create new tag */}

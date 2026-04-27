@@ -111,6 +111,13 @@ export async function createEntity(req: AuthRequest, res: Response) {
   }
 
   try {
+    // Self-tag every Client with its own name so the tag is real, persisted
+    // data — shows up in the Tags page and tag autocompletes immediately.
+    let initialTags: string[] = Array.isArray(tags) ? [...tags] : [];
+    if (entityType === 'Client' && !initialTags.some(t => t.toLowerCase() === name.toLowerCase())) {
+      initialTags.push(name);
+    }
+
     const entity = await prisma.entity.create({
       data: {
         name,
@@ -118,7 +125,7 @@ export async function createEntity(req: AuthRequest, res: Response) {
         website: website || null,
         description: description || null,
         address: address || null,
-        tags: JSON.stringify(tags || []),
+        tags: JSON.stringify(initialTags),
         memberName: memberName || null,
         chamber: chamber || null,
         state: state || null,
@@ -209,6 +216,34 @@ export async function deleteEntity(req: AuthRequest, res: Response) {
     return res.json({ message: 'Entity moved to recycle bin' });
   } catch (err) {
     console.error('[deleteEntity]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+/**
+ * One-time backfill: every CRM Entity with entityType='Client' should have
+ * its own name in its tags array. Idempotent.
+ */
+export async function backfillClientSelfTags(_req: AuthRequest, res: Response) {
+  try {
+    const clients = await prisma.entity.findMany({
+      where: { entityType: 'Client' },
+      select: { id: true, name: true, tags: true },
+    });
+    let updated = 0;
+    for (const c of clients) {
+      const current: string[] = JSON.parse(c.tags || '[]');
+      if (current.some(t => t.toLowerCase() === c.name.toLowerCase())) continue;
+      const next = [...current, c.name];
+      await prisma.entity.update({
+        where: { id: c.id },
+        data: { tags: JSON.stringify(next) },
+      });
+      updated++;
+    }
+    return res.json({ updated, scanned: clients.length });
+  } catch (err) {
+    console.error('[backfillClientSelfTags]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

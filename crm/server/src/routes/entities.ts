@@ -9,6 +9,7 @@ import {
   getEntityContacts,
   getEntityInitiatives,
   getEntityInteractions,
+  backfillClientSelfTags,
 } from '../controllers/entitiesController';
 
 const router = Router();
@@ -17,6 +18,8 @@ router.use(requireAuth);
 
 router.get('/', getEntities);
 router.post('/', requireEditor, createEntity);
+// Backfill must come before /:id so Express doesn't treat it as an id.
+router.post('/backfill-client-self-tags', requireAdmin, backfillClientSelfTags);
 router.get('/:id', getEntity);
 router.put('/:id', requireEditor, updateEntity);
 router.delete('/:id', requireAdmin, deleteEntity);

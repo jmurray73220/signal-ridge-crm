@@ -1,8 +1,126 @@
-import { useState, useMemo } from 'react';
-import { X } from 'lucide-react';
-import { entitiesApi } from '../api';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { X, Building2, Target, Tag as TagIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { entitiesApi, initiativesApi, contactsApi } from '../api';
 import type { Entity, EntityType } from '../types';
 import toast from 'react-hot-toast';
+
+/**
+ * Tag picker that suggests Client names + Initiatives + tags already in use
+ * across the data. Mirrors the ContactModal autocomplete so entities and
+ * contacts share UX. Free-text fallback: any value the user types and submits
+ * with Enter is added as a custom tag.
+ */
+function EntityTagAutocomplete({
+  currentTags,
+  excludeEntityId,
+  onAdd,
+}: {
+  currentTags: string[];
+  excludeEntityId?: string;
+  onAdd: (tag: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: entities = [] } = useQuery({
+    queryKey: ['entities'],
+    queryFn: () => entitiesApi.list().then((r: any) => r.data),
+  });
+  const { data: initiatives = [] } = useQuery({
+    queryKey: ['initiatives'],
+    queryFn: () => initiativesApi.list().then((r: any) => r.data),
+  });
+  const { data: contacts = [] } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: () => contactsApi.list().then((r: any) => r.data),
+  });
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const suggestions = useMemo(() => {
+    type Item = { label: string; type: string; icon: 'entity' | 'initiative' | 'tag' };
+    const items: Item[] = [];
+
+    // Clients first, then other entities (excluding self if editing an entity)
+    const clients = entities.filter((e: any) => e.entityType === 'Client' && e.id !== excludeEntityId);
+    const others = entities.filter((e: any) => e.entityType !== 'Client' && e.id !== excludeEntityId);
+    clients.forEach((e: any) => items.push({ label: e.name, type: 'Client', icon: 'entity' }));
+    others.forEach((e: any) => items.push({ label: e.name, type: e.entityType, icon: 'entity' }));
+    initiatives.forEach((i: any) => items.push({ label: i.title, type: 'Initiative', icon: 'initiative' }));
+
+    // Plus every tag already in use across contacts + entities, that we
+    // haven't already proposed via name match above.
+    const proposed = new Set(items.map(i => i.label.toLowerCase()));
+    const seenTags = new Set<string>();
+    for (const c of contacts) for (const t of (c.tags || [])) {
+      const k = t.toLowerCase();
+      if (!proposed.has(k) && !seenTags.has(k)) { seenTags.add(k); items.push({ label: t, type: 'Tag', icon: 'tag' }); }
+    }
+    for (const e of entities) for (const t of (e.tags || [])) {
+      const k = t.toLowerCase();
+      if (!proposed.has(k) && !seenTags.has(k)) { seenTags.add(k); items.push({ label: t, type: 'Tag', icon: 'tag' }); }
+    }
+
+    return items.filter(item => !currentTags.some(t => t.toLowerCase() === item.label.toLowerCase()));
+  }, [entities, initiatives, contacts, currentTags, excludeEntityId]);
+
+  const filtered = search
+    ? suggestions.filter(s => s.label.toLowerCase().includes(search.toLowerCase()))
+    : suggestions.slice(0, 15);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className="input"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Type to search clients, organizations, initiatives, tags…"
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const tag = search.trim();
+            if (tag) { onAdd(tag); setSearch(''); setOpen(false); }
+          }
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <div
+          className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg shadow-lg"
+          style={{ background: '#1c2333', border: '1px solid #30363d' }}
+        >
+          {filtered.slice(0, 20).map(item => (
+            <button
+              key={`${item.type}-${item.label}`}
+              type="button"
+              onClick={() => { onAdd(item.label); setSearch(''); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2"
+              style={{ borderBottom: '1px solid #30363d' }}
+            >
+              {item.icon === 'entity' ? (
+                <Building2 size={12} style={{ color: item.type === 'Client' ? '#c9a84c' : '#60a5fa', flexShrink: 0 }} />
+              ) : item.icon === 'initiative' ? (
+                <Target size={12} style={{ color: '#34d399', flexShrink: 0 }} />
+              ) : (
+                <TagIcon size={12} style={{ color: '#8b949e', flexShrink: 0 }} />
+              )}
+              <span style={{ color: '#e6edf3' }}>{item.label}</span>
+              <span className="text-xs ml-auto" style={{ color: '#8b949e' }}>{item.type}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ENTITY_TYPES: EntityType[] = ['CongressionalOffice', 'GovernmentOrganization', 'Company', 'Client', 'Other'];
 
@@ -63,7 +181,6 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
     capabilityDescription: entity?.capabilityDescription || '',
   });
   const [loading, setLoading] = useState(false);
-  const [customTag, setCustomTag] = useState('');
 
   // Auto-detect committee mode when editing: if entity name contains "Committee" or memberName has ranking info
   const isExistingCommittee = entity?.entityType === 'CongressionalOffice' && (
@@ -438,35 +555,15 @@ export function EntityModal({ entity, defaultType, onClose, onSave }: Props) {
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
-              <input
-                className="input flex-1"
-                value={customTag}
-                onChange={e => setCustomTag(e.target.value)}
-                placeholder="Type a tag and press Enter…"
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const tag = customTag.trim();
-                    if (tag && !form.tags.includes(tag)) {
-                      setForm(f => ({ ...f, tags: [...f.tags, tag] }));
-                    }
-                    setCustomTag('');
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const tag = customTag.trim();
-                  if (tag && !form.tags.includes(tag)) {
-                    setForm(f => ({ ...f, tags: [...f.tags, tag] }));
-                  }
-                  setCustomTag('');
-                }}
-                className="btn-secondary text-sm"
-              >Add</button>
-            </div>
+            <EntityTagAutocomplete
+              currentTags={form.tags}
+              excludeEntityId={entity?.id}
+              onAdd={(tag) => {
+                if (!form.tags.includes(tag)) {
+                  setForm(f => ({ ...f, tags: [...f.tags, tag] }));
+                }
+              }}
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
