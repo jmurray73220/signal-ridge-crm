@@ -21,14 +21,25 @@ export type ChangeAction = 'create' | 'update' | 'delete' | 'restore' | 'purge';
 
 /**
  * Field names to ignore when computing update diffs — timestamps and audit
- * fields that flip on every write and would clutter the history tab.
+ * fields that flip on every write, plus Prisma relation names that show up
+ * only in the post-update payload (when we `include:` them) and would look
+ * like phantom changes.
  */
 const IGNORED_DIFF_FIELDS = new Set([
+  // Timestamps + audit bookkeeping
   'updatedAt',
   'createdAt',
   'updatedByUserId',
   'deletedAt',
   'deletedByUserId',
+  // Prisma relation names — the object shape differs between before/after
+  // based on what the update call `include`d; the scalar FK (e.g. `entityId`)
+  // already captures the real change.
+  'entity', 'primaryEntity', 'track', 'sow', 'workflowClient',
+  'createdBy', 'updatedBy', 'deletedBy',
+  'contacts', 'initiatives', 'interactions', 'tasks', 'reminders',
+  'phases', 'milestones', 'actionItems',
+  'versions', 'comments', 'trackAssignments',
 ]);
 
 function normalize(value: unknown): unknown {
@@ -39,7 +50,8 @@ function normalize(value: unknown): unknown {
 
 /**
  * Return the set of fields whose values changed between `before` and `after`.
- * Ignored fields (timestamps, audit, soft-delete markers) are skipped.
+ * Skips known-noisy fields and any value that is a non-array object (those
+ * are Prisma relation payloads we never want to diff).
  */
 export function diffFields(before: Record<string, unknown>, after: Record<string, unknown>): Record<string, { before: unknown; after: unknown }> {
   const diff: Record<string, { before: unknown; after: unknown }> = {};
@@ -48,6 +60,10 @@ export function diffFields(before: Record<string, unknown>, after: Record<string
     if (IGNORED_DIFF_FIELDS.has(key)) continue;
     const a = normalize(before[key]);
     const b = normalize(after[key]);
+    // Skip complex relation objects — we only diff scalars and JSON-encoded arrays.
+    const isRelationLike = (v: unknown) =>
+      v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
+    if (isRelationLike(a) || isRelationLike(b)) continue;
     if (JSON.stringify(a) !== JSON.stringify(b)) {
       diff[key] = { before: a, after: b };
     }
