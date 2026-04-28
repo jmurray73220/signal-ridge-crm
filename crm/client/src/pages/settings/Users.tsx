@@ -153,11 +153,15 @@ export function Users() {
   const { user: currentUser } = useAuth();
   const qc = useQueryClient();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
-  const { data: users = [], isLoading } = useQuery({
+  const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => usersApi.list().then(r => r.data),
   });
+
+  const users = showInactive ? allUsers : allUsers.filter(u => u.isActive);
+  const inactiveCount = allUsers.filter(u => !u.isActive).length;
 
   const { data: workflowClients = [] } = useQuery({
     queryKey: ['workflow-clients'],
@@ -192,16 +196,32 @@ export function Users() {
     },
   });
 
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold" style={{ color: '#e6edf3' }}>User Management</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#8b949e' }}>{users.length} users</p>
+          <p className="text-sm mt-0.5" style={{ color: '#8b949e' }}>
+            {users.length} {showInactive ? 'users' : 'active users'}
+            {!showInactive && inactiveCount > 0 && ` · ${inactiveCount} hidden`}
+          </p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-1.5 text-sm">
-          <Plus size={14} /> Add User
-        </button>
+        <div className="flex items-center gap-3">
+          {inactiveCount > 0 && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#8b949e' }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={e => setShowInactive(e.target.checked)}
+              />
+              Show inactive
+            </label>
+          )}
+          <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-1.5 text-sm">
+            <Plus size={14} /> Add User
+          </button>
+        </div>
       </div>
 
       <div className="card p-0 overflow-hidden">
