@@ -7,6 +7,7 @@ import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { PriorityBadge } from '../components/StatusBadge';
 import toast from 'react-hot-toast';
 import type { Interaction, Reminder, Task } from '../types';
+import { formatCalendarDate, isOverdueDay, daysFromToday } from '../utils/dates';
 
 function StatCard({ icon, label, value, to, color }: {
   icon: React.ReactNode;
@@ -50,14 +51,12 @@ function InteractionTypeBadge({ type }: { type: string }) {
 }
 
 function isDueSoon(dueDate?: string | null) {
-  if (!dueDate) return false;
-  const diff = new Date(dueDate).getTime() - Date.now();
-  return diff >= 0 && diff < 7 * 24 * 60 * 60 * 1000;
+  const days = daysFromToday(dueDate);
+  return days != null && days >= 0 && days <= 7;
 }
 
 function isOverdue(dueDate?: string | null) {
-  if (!dueDate) return false;
-  return new Date(dueDate).getTime() < Date.now();
+  return isOverdueDay(dueDate);
 }
 
 export function Dashboard() {
@@ -258,7 +257,7 @@ export function Dashboard() {
                       className="text-xs mt-0.5"
                       style={{ color: overdue ? '#da3633' : '#8b949e' }}
                     >
-                      {overdue ? 'Overdue — ' : ''}{formatDate(t.dueDate)}
+                      {overdue ? 'Overdue — ' : ''}{formatCalendarDate(t.dueDate)}
                     </div>
                   )}
                   {t.contact && (

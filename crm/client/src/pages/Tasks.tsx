@@ -8,28 +8,21 @@ import { TaskModal } from '../components/TaskModal';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import type { Task } from '../types';
-
-function formatDate(d?: string | null) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+import { formatCalendarDate, isOverdueDay, isTodayDay, daysFromToday } from '../utils/dates';
 
 function isOverdue(t: Task) {
-  return !t.completed && t.dueDate != null && new Date(t.dueDate).getTime() < Date.now();
+  return !t.completed && isOverdueDay(t.dueDate);
 }
 
 function isDueToday(t: Task) {
-  if (!t.dueDate || t.completed) return false;
-  const d = new Date(t.dueDate);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  if (t.completed) return false;
+  return isTodayDay(t.dueDate);
 }
 
 function isUpcoming(t: Task) {
   if (!t.dueDate || t.completed) return false;
-  const d = new Date(t.dueDate).getTime();
-  const now = Date.now();
-  return d > now && d < now + 14 * 24 * 60 * 60 * 1000 && !isDueToday(t);
+  const days = daysFromToday(t.dueDate);
+  return days != null && days > 0 && days <= 14;
 }
 
 type Group = { label: string; color: string; items: Task[] };
@@ -79,7 +72,7 @@ function TaskRow({ task, onComplete, onEdit, onDelete, canEdit, canDelete }: {
         <div className="flex items-center gap-3 mt-1 flex-wrap">
           {task.dueDate && (
             <span className="text-xs" style={{ color: overdue && !task.completed ? '#da3633' : '#8b949e' }}>
-              {overdue && !task.completed ? 'Overdue — ' : ''}{formatDate(task.dueDate)}
+              {overdue && !task.completed ? 'Overdue — ' : ''}{formatCalendarDate(task.dueDate)}
             </span>
           )}
           {task.contact && (

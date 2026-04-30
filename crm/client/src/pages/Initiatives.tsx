@@ -9,6 +9,7 @@ import { InitiativeModal } from '../components/InitiativeModal';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import type { Initiative, InitiativeStatus } from '../types';
+import { formatCalendarDate } from '../utils/dates';
 
 const STATUSES: InitiativeStatus[] = ['Pipeline', 'Active', 'OnHold', 'Closed'];
 
@@ -27,8 +28,7 @@ const STATUS_COLORS: Record<InitiativeStatus, { bg: string; border: string; head
 };
 
 function formatDate(d?: string | null) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatCalendarDate(d) || null;
 }
 
 function InitiativeCard({ initiative }: { initiative: Initiative }) {

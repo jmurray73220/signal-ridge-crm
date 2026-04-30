@@ -14,6 +14,7 @@ import { InitiativeContactsTab } from '../components/InitiativeContactsTab';
 import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+import { formatCalendarDate, isOverdueDay } from '../utils/dates';
 
 function formatDate(d?: string | null) {
   if (!d) return '—';
@@ -202,8 +203,8 @@ export function InitiativeDetail() {
 
             {(i.startDate || i.targetDate) && (
               <div className="flex gap-4 mb-3">
-                {i.startDate && <div className="text-sm" style={{ color: '#8b949e' }}>Start: <span style={{ color: '#e6edf3' }}>{formatDate(i.startDate)}</span></div>}
-                {i.targetDate && <div className="text-sm" style={{ color: '#8b949e' }}>Target: <span style={{ color: '#e6edf3' }}>{formatDate(i.targetDate)}</span></div>}
+                {i.startDate && <div className="text-sm" style={{ color: '#8b949e' }}>Start: <span style={{ color: '#e6edf3' }}>{formatCalendarDate(i.startDate)}</span></div>}
+                {i.targetDate && <div className="text-sm" style={{ color: '#8b949e' }}>Target: <span style={{ color: '#e6edf3' }}>{formatCalendarDate(i.targetDate)}</span></div>}
               </div>
             )}
 
@@ -438,7 +439,7 @@ export function InitiativeDetail() {
               <p className="text-sm" style={{ color: '#8b949e' }}>No tasks linked to this initiative.</p>
             </div>
           ) : tasks.map((t: any) => {
-            const overdue = t.dueDate && !t.completed && new Date(t.dueDate).getTime() < Date.now();
+            const overdue = !t.completed && isOverdueDay(t.dueDate);
             return (
               <div key={t.id} className="card flex items-start gap-3">
                 <button
@@ -453,7 +454,7 @@ export function InitiativeDetail() {
                   </div>
                   {t.dueDate && (
                     <div className="text-xs mt-0.5" style={{ color: overdue && !t.completed ? '#da3633' : '#8b949e' }}>
-                      {overdue && !t.completed ? 'Overdue — ' : ''}{formatDate(t.dueDate)}
+                      {overdue && !t.completed ? 'Overdue — ' : ''}{formatCalendarDate(t.dueDate)}
                     </div>
                   )}
                   {t.contact && <Link to={`/contacts/${t.contact.id}`} className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>{t.contact.firstName} {t.contact.lastName}</Link>}

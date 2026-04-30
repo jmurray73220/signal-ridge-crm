@@ -13,6 +13,7 @@ import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
 import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
+import { formatCalendarDate, isOverdueDay } from '../utils/dates';
 import { useAuth } from '../contexts/AuthContext';
 
 function CopyEmailButton({ email }: { email: string }) {
@@ -375,7 +376,7 @@ export function ContactDetail() {
               <p className="text-sm" style={{ color: '#8b949e' }}>No tasks linked to this contact.</p>
             </div>
           ) : tasks.map((t: any) => {
-            const overdue = t.dueDate && !t.completed && new Date(t.dueDate).getTime() < Date.now();
+            const overdue = !t.completed && isOverdueDay(t.dueDate);
             return (
               <div key={t.id} className="card flex items-start gap-3">
                 <button
@@ -393,7 +394,7 @@ export function ContactDetail() {
                   </div>
                   {t.dueDate && (
                     <div className="text-xs mt-0.5" style={{ color: overdue ? '#da3633' : '#8b949e' }}>
-                      {overdue && !t.completed ? 'Overdue — ' : ''}{formatDate(t.dueDate)}
+                      {overdue && !t.completed ? 'Overdue — ' : ''}{formatCalendarDate(t.dueDate)}
                     </div>
                   )}
                 </div>
