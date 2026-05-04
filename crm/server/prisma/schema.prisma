@@ -160,6 +160,8 @@ model Entity {
   interactions    Interaction[]
   tasks           Task[]
   reminders       Reminder[]
+  briefingDocsAsOffice BriefingDocument[] @relation("BriefingDocsOffice")
+  briefingDocsAsClient BriefingDocument[] @relation("BriefingDocsClient")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -389,6 +391,28 @@ model GmailPendingEmail {
   matchedContactIds String   @default("[]") // JSON array of all matched contact IDs
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+// ─── Briefing Documents (uploaded reference briefings for AI generation) ────
+
+model BriefingDocument {
+  id              String   @id @default(uuid())
+  // Office the meeting was held at (this is where the upload UI lives).
+  officeId        String
+  office          Entity   @relation("BriefingDocsOffice", fields: [officeId], references: [id], onDelete: Cascade)
+  // The client the briefing was prepared for. Drives retrieval at generation time.
+  clientId        String
+  client          Entity   @relation("BriefingDocsClient", fields: [clientId], references: [id], onDelete: Cascade)
+  filename        String
+  mimeType        String
+  extractedText   String   // Full text extracted at upload time
+  tags            String   @default("[]") // JSON array of free-text tags
+  meetingDate     DateTime?
+  uploadedAt      DateTime @default(now())
+  uploadedByUserId String?
+
+  @@index([clientId])
+  @@index([officeId])
 }
 
 // ─── Budget Intelligence ─────────────────────────────────────────────────────

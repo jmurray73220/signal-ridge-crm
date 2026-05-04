@@ -5,13 +5,14 @@ import {
   ArrowLeft, Edit2, Trash2, MessageSquare, Target,
   CheckSquare, Users, Sparkles, Plus, ExternalLink
 } from 'lucide-react';
-import { entitiesApi, tasksApi, contactsApi } from '../api';
+import { entitiesApi, tasksApi, contactsApi, briefingDocsApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { EntityModal } from '../components/EntityModal';
 import { ContactModal } from '../components/ContactModal';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
+import { BriefingDocsTab } from '../components/OfficeBriefingDocs';
 import { ChangeLogPanel } from '../components/ChangeLogPanel';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,7 +34,7 @@ function InteractionTypeBadge({ type }: { type: string }) {
   );
 }
 
-type Tab = 'people' | 'contacts' | 'initiatives' | 'interactions' | 'tasks';
+type Tab = 'people' | 'contacts' | 'initiatives' | 'interactions' | 'tasks' | 'briefings';
 
 export function EntityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,24 @@ export function EntityDetail() {
     queryKey: ['contacts'],
     queryFn: () => contactsApi.list().then(r => r.data),
     enabled: entity?.entityType === 'Client',
+  });
+
+  // Past-briefings count for the tab badge — shares the cache key with the
+  // BriefingDocsTab below so they show the same number.
+  const briefingsFixedSide = entity?.entityType === 'Client' ? 'client' : 'office';
+  const briefingsEnabled =
+    !!id && !!entity && (
+      entity.entityType === 'Client' ||
+      entity.entityType === 'CongressionalOffice' ||
+      entity.entityType === 'GovernmentOrganization'
+    );
+  const { data: briefingDocs = [] } = useQuery({
+    queryKey: ['briefingDocs', briefingsFixedSide, id],
+    queryFn: () =>
+      briefingDocsApi
+        .list(briefingsFixedSide === 'client' ? { clientId: id! } : { officeId: id! })
+        .then(r => r.data),
+    enabled: briefingsEnabled,
   });
 
   const deleteEntity = useMutation({
@@ -242,6 +261,8 @@ export function EntityDetail() {
       {/* Compute tagged contacts for Client entities */}
       {(() => {
         const isClient = entity.entityType === 'Client';
+        const isOffice = entity.entityType === 'CongressionalOffice' ||
+                         entity.entityType === 'GovernmentOrganization';
         const taggedContacts = isClient
           ? allContacts.filter(c =>
               c.entityId !== id &&
@@ -267,6 +288,7 @@ export function EntityDetail() {
                 ['initiatives', 'Initiatives', allInitiatives.length],
                 ['interactions', 'Interactions', interactions.length],
                 ['tasks', 'Tasks', tasks.length],
+                ...(isOffice || isClient ? [['briefings', 'Past Briefings', briefingDocs.length] as [Tab, string, number]] : []),
               ] as [Tab, string, number][]).map(([t, label, count]) => (
                 <button
                   key={t}
@@ -566,6 +588,15 @@ export function EntityDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Past Briefings Tab — accessible from either an Office or a Client */}
+      {tab === 'briefings' &&
+        (entity.entityType === 'CongressionalOffice' || entity.entityType === 'GovernmentOrganization') && (
+        <BriefingDocsTab officeId={id!} />
+      )}
+      {tab === 'briefings' && entity.entityType === 'Client' && (
+        <BriefingDocsTab clientId={id!} />
       )}
 
       {/* Tasks Tab */}

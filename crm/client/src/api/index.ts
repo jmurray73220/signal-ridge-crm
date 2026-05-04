@@ -163,24 +163,54 @@ export const exportApi = {
     api.get('/api/export/interactions', { responseType: 'blob' }),
 };
 
+// Briefing Documents (uploaded reference briefings)
+export interface BriefingDoc {
+  id: string;
+  officeId: string;
+  clientId: string;
+  filename: string;
+  mimeType: string;
+  tags: string[];
+  meetingDate: string | null;
+  uploadedAt: string;
+  client?: { id: string; name: string };
+  office?: { id: string; name: string };
+}
+
+export const briefingDocsApi = {
+  list: (params: { officeId?: string; clientId?: string }) =>
+    api.get<BriefingDoc[]>('/api/briefing-docs', { params }),
+  tags: () => api.get<string[]>('/api/briefing-docs/tags'),
+  upload: (data: FormData) =>
+    api.post<BriefingDoc>('/api/briefing-docs/upload', data),
+  delete: (id: string) => api.delete(`/api/briefing-docs/${id}`),
+};
+
 // Briefing
 export const briefingApi = {
   entity: (id: string) => api.get<{ briefing: string }>(`/api/briefing/entity/${id}`),
   contact: (id: string) => api.get<{ briefing: string }>(`/api/briefing/contact/${id}`),
-  exportDocx: (briefingMarkdown: string, filename?: string) =>
-    api.post('/api/briefing/export-docx', { briefingMarkdown, filename }, { responseType: 'blob', timeout: 30000 }),
+  exportDocx: (briefingMarkdown: string, filename?: string, officeId?: string) =>
+    api.post('/api/briefing/export-docx', { briefingMarkdown, filename, officeId }, { responseType: 'blob', timeout: 60000 }),
   clientMeeting: (data: {
     clientId: string;
     officeId: string;
     meetingDate: string;
     meetingTime?: string;
     meetingLocation?: string;
-    stafferContactId?: string;
+    stafferContactIds?: string[];
     primaryAsk?: string;
     rationale?: string;
     talkingPointsPrompt?: string;
     additionalContext?: string;
+    referenceBriefingIds?: string[];
   }) => api.post<{ briefing: string }>('/api/briefing/client-meeting', data, { timeout: 120000 }),
+  extractDraft: (referenceBriefingIds: string[]) =>
+    api.post<{ primaryAsk: string; rationale: string; talkingPointsPrompt: string }>(
+      '/api/briefing/extract-draft',
+      { referenceBriefingIds },
+      { timeout: 60000 },
+    ),
 };
 
 // CRM Settings

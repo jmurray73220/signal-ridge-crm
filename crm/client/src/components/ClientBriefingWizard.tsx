@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, Copy, ChevronRight, ChevronLeft, Download } from 'lucide-react';
-import { entitiesApi, contactsApi, briefingApi } from '../api';
+import { entitiesApi, contactsApi, briefingApi, briefingDocsApi } from '../api';
 import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 
@@ -15,11 +15,12 @@ interface WizardData {
   meetingDate: string;
   meetingTime: string;
   meetingLocation: string;
-  stafferContactId: string;
+  stafferContactIds: string[];
   primaryAsk: string;
   rationale: string;
   talkingPointsPrompt: string;
   additionalContext: string;
+  referenceBriefingIds: string[];
 }
 
 function AutocompleteField({
@@ -122,8 +123,97 @@ function AutocompleteField({
   );
 }
 
+function MultiSelectAutocomplete({
+  label,
+  placeholder,
+  items,
+  values,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  items: { id: string; display: string }[];
+  values: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selectedItems = values
+    .map(id => items.find(i => i.id === id))
+    .filter(Boolean) as { id: string; display: string }[];
+
+  const filtered = (search
+    ? items.filter(i => i.display.toLowerCase().includes(search.toLowerCase()))
+    : items
+  ).filter(i => !values.includes(i.id));
+
+  const add = (id: string) => {
+    if (!values.includes(id)) onChange([...values, id]);
+    setSearch('');
+  };
+  const remove = (id: string) => onChange(values.filter(v => v !== id));
+
+  return (
+    <div ref={ref} className="relative">
+      {label && <label className="label">{label}</label>}
+      {selectedItems.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {selectedItems.map(it => (
+            <span
+              key={it.id}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+              style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid #c9a84c' }}
+            >
+              {it.display}
+              <button type="button" onClick={() => remove(it.id)} className="opacity-70 hover:opacity-100">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        className="input"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={selectedItems.length ? 'Add another…' : placeholder}
+      />
+      {open && filtered.length > 0 && (
+        <div
+          className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg shadow-lg"
+          style={{ background: '#1c2333', border: '1px solid #30363d' }}
+        >
+          {filtered.slice(0, 20).map(item => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => { add(item.id); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5"
+              style={{ color: '#e6edf3', borderBottom: '1px solid #30363d' }}
+            >
+              {item.display}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STEPS = [
   'Client & Office',
+  'Reference Briefings',
   'Meeting Details',
   'Objectives & Talking Points',
   'Review & Generate',
@@ -137,13 +227,15 @@ export function ClientBriefingWizard({ onClose }: Props) {
     meetingDate: '',
     meetingTime: '',
     meetingLocation: '',
-    stafferContactId: '',
+    stafferContactIds: [],
     primaryAsk: '',
     rationale: '',
     talkingPointsPrompt: '',
     additionalContext: '',
+    referenceBriefingIds: [],
   });
   const [generating, setGenerating] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [briefing, setBriefing] = useState('');
   const [error, setError] = useState('');
 
@@ -155,6 +247,14 @@ export function ClientBriefingWizard({ onClose }: Props) {
   const { data: allContacts = [] } = useQuery({
     queryKey: ['contacts'],
     queryFn: () => contactsApi.list().then(r => r.data),
+  });
+  // Past briefings tagged with the chosen client — these will be fed to Claude
+  // as reference context during generation. Surfaced in Step 3 so the user can
+  // see exactly what's being drawn on before generating.
+  const { data: refBriefings = [] } = useQuery({
+    queryKey: ['briefingDocs', 'client', data.clientId],
+    queryFn: () => briefingDocsApi.list({ clientId: data.clientId }).then(r => r.data),
+    enabled: !!data.clientId,
   });
 
   const clients = allEntities.filter(e => e.entityType === 'Client');
@@ -172,13 +272,58 @@ export function ClientBriefingWizard({ onClose }: Props) {
     }
   }, [data.officeId, selectedOffice]);
 
-  const update = (key: keyof WizardData, val: string) =>
+  // Default-select every past briefing for this client whenever the client
+  // changes. The user can uncheck individual ones in step 2.
+  useEffect(() => {
+    setData(d => ({ ...d, referenceBriefingIds: refBriefings.map(b => b.id) }));
+  }, [data.clientId, refBriefings.length]);
+
+  const update = <K extends keyof WizardData>(key: K, val: WizardData[K]) =>
     setData(d => ({ ...d, [key]: val }));
 
   const canProceed = () => {
     if (step === 0) return !!data.clientId && !!data.officeId;
-    if (step === 1) return !!data.meetingDate;
+    if (step === 1) return true; // references step — selection optional
+    if (step === 2) return !!data.meetingDate;
     return true;
+  };
+
+  // Advance handler: when moving off the references step, if any references
+  // are selected, ask the server to extract a Primary Ask / Rationale /
+  // Talking Points draft from them so the next step is pre-populated.
+  const handleNext = async () => {
+    if (step === 1 && data.referenceBriefingIds.length > 0) {
+      // Don't overwrite anything the user already typed
+      const fieldsAlreadyFilled = !!(data.primaryAsk || data.rationale || data.talkingPointsPrompt);
+      if (!fieldsAlreadyFilled) {
+        setExtracting(true);
+        setError('');
+        try {
+          const res = await briefingApi.extractDraft(data.referenceBriefingIds);
+          setData(d => ({
+            ...d,
+            primaryAsk: d.primaryAsk || res.data.primaryAsk,
+            rationale: d.rationale || res.data.rationale,
+            talkingPointsPrompt: d.talkingPointsPrompt || res.data.talkingPointsPrompt,
+          }));
+        } catch (err: any) {
+          // Soft fail: advance anyway with empty fields rather than block
+          console.warn('Draft extraction failed', err);
+        } finally {
+          setExtracting(false);
+        }
+      }
+    }
+    setStep(s => s + 1);
+  };
+
+  const toggleRefBriefing = (id: string) => {
+    setData(d => ({
+      ...d,
+      referenceBriefingIds: d.referenceBriefingIds.includes(id)
+        ? d.referenceBriefingIds.filter(x => x !== id)
+        : [...d.referenceBriefingIds, id],
+    }));
   };
 
   const handleGenerate = async () => {
@@ -187,7 +332,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
     try {
       const res = await briefingApi.clientMeeting(data);
       setBriefing(res.data.briefing);
-      setStep(4); // show result
+      setStep(5); // show result
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to generate briefing');
     } finally {
@@ -203,7 +348,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
   const handleDownloadDocx = async () => {
     try {
       const officeName = selectedOffice?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'briefing';
-      const res = await briefingApi.exportDocx(briefing, `Client_Briefing_${officeName}`);
+      const res = await briefingApi.exportDocx(briefing, `Client_Briefing_${officeName}`, data.officeId);
       const url = URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
@@ -217,7 +362,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
   };
 
   // Result view
-  if (step === 4) {
+  if (step === 5) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
         <div className="w-full max-w-3xl h-full max-h-[90vh] flex flex-col rounded-xl overflow-hidden" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
@@ -262,7 +407,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
-      <div className="w-full max-w-lg rounded-xl overflow-hidden" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
+      <div className="w-full max-w-xl rounded-xl overflow-hidden flex flex-col" style={{ background: '#1c2333', border: '1px solid #30363d', height: '88vh' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #30363d' }}>
           <div>
@@ -283,7 +428,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+        <div className="flex-1 p-6 space-y-4 overflow-y-auto">
           {step === 0 && (
             <>
               <AutocompleteField
@@ -301,7 +446,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
                 value={data.officeId}
                 onChange={id => {
                   update('officeId', id);
-                  update('stafferContactId', '');
+                  update('stafferContactIds', []);
                   // Reset location so it can auto-fill from new office
                   const office = offices.find(o => o.id === id);
                   if (office?.address) update('meetingLocation', office.address);
@@ -313,6 +458,17 @@ export function ClientBriefingWizard({ onClose }: Props) {
           )}
 
           {step === 1 && (
+            <ReferenceBriefingsStep
+              clientName={clients.find(c => c.id === data.clientId)?.name || ''}
+              refBriefings={refBriefings}
+              selectedIds={data.referenceBriefingIds}
+              onToggle={toggleRefBriefing}
+              onSelectAll={() => update('referenceBriefingIds', refBriefings.map(b => b.id))}
+              onSelectNone={() => update('referenceBriefingIds', [])}
+            />
+          )}
+
+          {step === 2 && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -352,17 +508,17 @@ export function ClientBriefingWizard({ onClose }: Props) {
               </div>
 
               <div>
-                <label className="label">Meeting With (Staffer)</label>
+                <label className="label">Meeting With (one or more staffers)</label>
                 {officeContacts.length > 0 ? (
-                  <AutocompleteField
+                  <MultiSelectAutocomplete
                     label=""
-                    placeholder="Start typing staffer name…"
+                    placeholder="Start typing staffer name… add as many as needed"
                     items={officeContacts.map(c => ({
                       id: c.id,
                       display: `${c.firstName} ${c.lastName}${c.title ? ` — ${c.title}` : ''}`,
                     }))}
-                    value={data.stafferContactId}
-                    onChange={id => update('stafferContactId', id)}
+                    values={data.stafferContactIds}
+                    onChange={ids => update('stafferContactIds', ids)}
                   />
                 ) : (
                   <p className="text-xs" style={{ color: '#8b949e' }}>
@@ -373,7 +529,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
             </>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <>
               <div>
                 <label className="label">Primary Ask / Objectives *</label>
@@ -381,7 +537,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
                   className="input"
                   value={data.primaryAsk}
                   onChange={e => update('primaryAsk', e.target.value)}
-                  rows={3}
+                  rows={5}
                   placeholder="What's the main ask for this meeting? Claude will help craft the rationale and structure."
                   style={{ resize: 'vertical' }}
                 />
@@ -392,7 +548,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
                   className="input"
                   value={data.rationale}
                   onChange={e => update('rationale', e.target.value)}
-                  rows={3}
+                  rows={5}
                   placeholder="Key points for why this meeting matters. Claude will expand this into a full rationale section."
                   style={{ resize: 'vertical' }}
                 />
@@ -403,7 +559,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
                   className="input"
                   value={data.talkingPointsPrompt}
                   onChange={e => update('talkingPointsPrompt', e.target.value)}
-                  rows={3}
+                  rows={5}
                   placeholder="Key themes or angles for talking points. Claude will generate structured talking points."
                   style={{ resize: 'vertical' }}
                 />
@@ -414,7 +570,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
                   className="input"
                   value={data.additionalContext}
                   onChange={e => update('additionalContext', e.target.value)}
-                  rows={2}
+                  rows={3}
                   placeholder="Any other relevant info for the briefing…"
                   style={{ resize: 'vertical' }}
                 />
@@ -422,7 +578,7 @@ export function ClientBriefingWizard({ onClose }: Props) {
             </>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold" style={{ color: '#e6edf3' }}>Review Your Inputs</h3>
               {[
@@ -430,9 +586,13 @@ export function ClientBriefingWizard({ onClose }: Props) {
                 ['Office', selectedOffice?.name],
                 ['Date & Time', `${data.meetingDate}${data.meetingTime ? ' at ' + data.meetingTime : ''}`],
                 ['Location', data.meetingLocation],
-                ['Staffer', (() => {
-                  const c = allContacts.find(c => c.id === data.stafferContactId);
-                  return c ? `${c.firstName} ${c.lastName}` : '—';
+                ['Staffers', (() => {
+                  if (!data.stafferContactIds.length) return '—';
+                  return data.stafferContactIds
+                    .map(id => allContacts.find(c => c.id === id))
+                    .filter(Boolean)
+                    .map((c: any) => `${c.firstName} ${c.lastName}`)
+                    .join(', ');
                 })()],
                 ['Primary Ask', data.primaryAsk || '—'],
               ].map(([label, val]) => (
@@ -441,6 +601,12 @@ export function ClientBriefingWizard({ onClose }: Props) {
                   <span className="text-sm" style={{ color: '#e6edf3' }}>{val || '—'}</span>
                 </div>
               ))}
+
+              {data.referenceBriefingIds.length > 0 && (
+                <div className="text-xs mt-2" style={{ color: '#8b949e' }}>
+                  Drawing on <span style={{ color: '#c9a84c' }}>{data.referenceBriefingIds.length}</span> past briefing{data.referenceBriefingIds.length === 1 ? '' : 's'}.
+                </div>
+              )}
 
               {error && (
                 <div className="p-3 rounded-lg" style={{ background: 'rgba(218,54,51,0.1)', border: '1px solid #da3633' }}>
@@ -462,13 +628,17 @@ export function ClientBriefingWizard({ onClose }: Props) {
             <ChevronLeft size={14} /> Back
           </button>
 
-          {step < 3 ? (
+          {step < 4 ? (
             <button
-              onClick={() => setStep(s => s + 1)}
-              disabled={!canProceed()}
+              onClick={handleNext}
+              disabled={!canProceed() || extracting}
               className="btn-primary flex items-center gap-1 text-sm"
             >
-              Next <ChevronRight size={14} />
+              {extracting ? (
+                <><Loader2 size={14} className="animate-spin" /> Pre-filling from references…</>
+              ) : (
+                <>Next <ChevronRight size={14} /></>
+              )}
             </button>
           ) : (
             <button
@@ -486,6 +656,91 @@ export function ClientBriefingWizard({ onClose }: Props) {
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reference Briefings step body ───────────────────────────────────────────
+
+function ReferenceBriefingsStep({
+  clientName,
+  refBriefings,
+  selectedIds,
+  onToggle,
+  onSelectAll,
+  onSelectNone,
+}: {
+  clientName: string;
+  refBriefings: Array<{ id: string; filename: string; office?: { name: string }; meetingDate?: string | null; tags: string[]; uploadedAt: string }>;
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onSelectNone: () => void;
+}) {
+  if (!refBriefings.length) {
+    return (
+      <div className="rounded-lg p-4 text-sm" style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px dashed #30363d',
+        color: '#8b949e',
+      }}>
+        <div className="font-semibold mb-1" style={{ color: '#e6edf3' }}>
+          No past briefings on file{clientName ? ` for ${clientName}` : ''} yet.
+        </div>
+        Continue and we'll generate from scratch. Once you've uploaded prior briefings on a
+        Congressional Office's <strong style={{ color: '#e6edf3' }}>Past Briefings</strong> tab,
+        future generations can carry forward tone, talking points, and language.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs" style={{ color: '#8b949e' }}>
+          {selectedIds.length === 0
+            ? 'No references selected — generation will start from scratch.'
+            : <>Selected <span style={{ color: '#c9a84c' }}>{selectedIds.length}</span> of {refBriefings.length}. The next step will be pre-populated from these.</>}
+        </p>
+        <div className="flex gap-2 text-xs">
+          <button type="button" onClick={onSelectAll} style={{ color: '#c9a84c' }}>Select all</button>
+          <span style={{ color: '#30363d' }}>|</span>
+          <button type="button" onClick={onSelectNone} style={{ color: '#8b949e' }}>None</button>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {refBriefings.map(b => {
+          const checked = selectedIds.includes(b.id);
+          return (
+            <label
+              key={b.id}
+              className="flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors hover:bg-white/5"
+              style={{
+                background: checked ? 'rgba(201,168,76,0.08)' : 'transparent',
+                border: `1px solid ${checked ? 'rgba(201,168,76,0.35)' : '#30363d'}`,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onToggle(b.id)}
+                className="mt-0.5"
+                style={{ accentColor: '#c9a84c' }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate" style={{ color: '#e6edf3' }}>
+                  {b.filename}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: '#8b949e' }}>
+                  {b.office?.name && <span>{b.office.name}</span>}
+                  {b.meetingDate && <span> · {new Date(b.meetingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+                  {b.tags.length > 0 && <span> · {b.tags.join(', ')}</span>}
+                </div>
+              </div>
+            </label>
+          );
+        })}
       </div>
     </div>
   );
