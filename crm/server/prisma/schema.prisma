@@ -193,6 +193,7 @@ model Initiative {
   interactions Interaction[]
   tasks        Task[]
   reminders    Reminder[]
+  briefingDocs BriefingDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -403,6 +404,9 @@ model BriefingDocument {
   // The client the briefing was prepared for. Drives retrieval at generation time.
   clientId        String
   client          Entity   @relation("BriefingDocsClient", fields: [clientId], references: [id], onDelete: Cascade)
+  // Optional initiative this briefing was associated with.
+  initiativeId    String?
+  initiative      Initiative? @relation(fields: [initiativeId], references: [id], onDelete: SetNull)
   filename        String
   mimeType        String
   extractedText   String   // Full text extracted at upload time
@@ -413,6 +417,7 @@ model BriefingDocument {
 
   @@index([clientId])
   @@index([officeId])
+  @@index([initiativeId])
 }
 
 // ─── Budget Intelligence ─────────────────────────────────────────────────────

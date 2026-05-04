@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, Trash2, FileText, X, Tag as TagIcon, Loader2 } from 'lucide-react';
-import { briefingDocsApi, entitiesApi } from '../api';
+import { Upload, Trash2, FileText, X, Tag as TagIcon, Loader2, Plus } from 'lucide-react';
+import { briefingDocsApi, entitiesApi, initiativesApi } from '../api';
+import { AutocompleteField } from './Autocomplete';
 import toast from 'react-hot-toast';
 
 function fmtDate(d?: string | null) {
@@ -83,7 +84,14 @@ export function BriefingDocsTab({ officeId, clientId }: Props) {
             <tbody>
               {docs.map(d => (
                 <tr key={d.id} style={{ borderTop: '1px solid #30363d' }}>
-                  <Td><div className="flex items-center gap-2"><FileText size={13} style={{ color: '#8b949e' }} />{d.filename}</div></Td>
+                  <Td>
+                    <div className="flex items-center gap-2"><FileText size={13} style={{ color: '#8b949e' }} />{d.filename}</div>
+                    {d.initiative && (
+                      <div className="text-xs ml-5 mt-0.5" style={{ color: '#8b949e' }}>
+                        ↳ {d.initiative.title}
+                      </div>
+                    )}
+                  </Td>
                   <Td>{(fixed === 'office' ? d.client?.name : d.office?.name) || '—'}</Td>
                   <Td>{fmtDate(d.meetingDate)}</Td>
                   <Td>
@@ -169,6 +177,7 @@ function UploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [pickedClientId, setPickedClientId] = useState(clientId || '');
   const [pickedOfficeId, setPickedOfficeId] = useState(officeId || '');
+  const [pickedInitiativeId, setPickedInitiativeId] = useState('');
   const [meetingDate, setMeetingDate] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -181,12 +190,27 @@ function UploadModal({
     queryKey: ['briefingDocTags'],
     queryFn: () => briefingDocsApi.tags().then(r => r.data),
   });
+  const { data: allInitiatives = [] } = useQuery({
+    queryKey: ['initiatives'],
+    queryFn: () => initiativesApi.list().then(r => r.data),
+  });
 
   const clients = useMemo(() => allEntities.filter(e => e.entityType === 'Client'), [allEntities]);
   const offices = useMemo(
     () => allEntities.filter(e => e.entityType === 'CongressionalOffice' || e.entityType === 'GovernmentOrganization'),
     [allEntities]
   );
+  // Prioritize initiatives owned by the picked client, then everything else
+  const initiativesSorted = useMemo(() => {
+    const list = [...allInitiatives];
+    list.sort((a: any, b: any) => {
+      const aMine = a.primaryEntityId === pickedClientId ? 0 : 1;
+      const bMine = b.primaryEntityId === pickedClientId ? 0 : 1;
+      if (aMine !== bMine) return aMine - bMine;
+      return a.title.localeCompare(b.title);
+    });
+    return list;
+  }, [allInitiatives, pickedClientId]);
 
   const submit = async () => {
     if (!file) { toast.error('Pick a file first'); return; }
@@ -198,6 +222,7 @@ function UploadModal({
       fd.append('file', file);
       fd.append('officeId', pickedOfficeId);
       fd.append('clientId', pickedClientId);
+      if (pickedInitiativeId) fd.append('initiativeId', pickedInitiativeId);
       if (meetingDate) fd.append('meetingDate', meetingDate);
       fd.append('tags', JSON.stringify(tags));
       await briefingDocsApi.upload(fd);
@@ -240,24 +265,39 @@ function UploadModal({
           </div>
 
           {showClientPicker && (
-            <div>
-              <label className="label">Client this briefing was for *</label>
-              <select className="input" value={pickedClientId} onChange={e => setPickedClientId(e.target.value)}>
-                <option value="">Select a client…</option>
-                {clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-              </select>
-            </div>
+            <AutocompleteField
+              label="Client this briefing was for"
+              placeholder="Start typing client name…"
+              required
+              items={clients.map(c => ({ id: c.id, display: c.name }))}
+              value={pickedClientId}
+              onChange={setPickedClientId}
+            />
           )}
 
           {showOfficePicker && (
-            <div>
-              <label className="label">Office the meeting was with *</label>
-              <select className="input" value={pickedOfficeId} onChange={e => setPickedOfficeId(e.target.value)}>
-                <option value="">Select an office…</option>
-                {offices.map(o => (<option key={o.id} value={o.id}>{o.name}</option>))}
-              </select>
-            </div>
+            <AutocompleteField
+              label="Office the meeting was with"
+              placeholder="Start typing office name…"
+              required
+              items={offices.map(o => ({ id: o.id, display: o.name }))}
+              value={pickedOfficeId}
+              onChange={setPickedOfficeId}
+            />
           )}
+
+          <AutocompleteField
+            label="Initiative (optional)"
+            placeholder={pickedClientId ? "Start typing initiative title…" : "Pick a client first to see their initiatives"}
+            items={initiativesSorted.map((i: any) => ({
+              id: i.id,
+              display: i.primaryEntity?.name && i.primaryEntityId !== pickedClientId
+                ? `${i.title} — ${i.primaryEntity.name}`
+                : i.title,
+            }))}
+            value={pickedInitiativeId}
+            onChange={setPickedInitiativeId}
+          />
 
           <div>
             <label className="label">Meeting Date (optional)</label>
@@ -354,25 +394,39 @@ function TagInput({
         }}
         placeholder='Type a tag and press Enter, or pick from below'
       />
-      {open && suggestions.length > 0 && (
+      {open && (suggestions.length > 0 || (input.trim() && !bank.includes(input.trim()))) && (
         <div
           className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg shadow-lg"
           style={{ background: '#1c2333', border: '1px solid #30363d' }}
         >
-          <div className="px-3 py-1.5 text-xs uppercase tracking-wide" style={{ color: '#8b949e', borderBottom: '1px solid #30363d' }}>
-            Tag bank
-          </div>
-          {suggestions.map(s => (
+          {input.trim() && !bank.some(b => b.toLowerCase() === input.trim().toLowerCase()) && !tags.includes(input.trim()) && (
             <button
-              key={s}
               type="button"
-              onClick={() => { add(s); setOpen(false); }}
-              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5"
-              style={{ color: '#e6edf3', borderBottom: '1px solid #30363d' }}
+              onClick={() => { add(input); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2"
+              style={{ color: '#c9a84c', borderBottom: '1px solid #30363d', fontWeight: 500 }}
             >
-              {s}
+              <Plus size={12} /> Add "{input.trim()}" as new tag
             </button>
-          ))}
+          )}
+          {suggestions.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 text-xs uppercase tracking-wide" style={{ color: '#8b949e', borderBottom: '1px solid #30363d' }}>
+                Tag bank
+              </div>
+              {suggestions.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { add(s); setOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5"
+                  style={{ color: '#e6edf3', borderBottom: '1px solid #30363d' }}
+                >
+                  {s}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

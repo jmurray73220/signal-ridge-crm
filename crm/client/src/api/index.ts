@@ -168,6 +168,7 @@ export interface BriefingDoc {
   id: string;
   officeId: string;
   clientId: string;
+  initiativeId: string | null;
   filename: string;
   mimeType: string;
   tags: string[];
@@ -175,6 +176,7 @@ export interface BriefingDoc {
   uploadedAt: string;
   client?: { id: string; name: string };
   office?: { id: string; name: string };
+  initiative?: { id: string; title: string };
 }
 
 export const briefingDocsApi = {

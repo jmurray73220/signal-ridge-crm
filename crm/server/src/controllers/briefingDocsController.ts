@@ -28,7 +28,7 @@ async function extractText(buffer: Buffer, mimeType: string, filename: string): 
 export async function uploadBriefingDoc(req: AuthRequest, res: Response) {
   try {
     if (!req.file) return res.status(400).json({ error: 'File required' });
-    const { officeId, clientId, tags, meetingDate } = req.body;
+    const { officeId, clientId, initiativeId, tags, meetingDate } = req.body;
     if (!officeId) return res.status(400).json({ error: 'officeId required' });
     if (!clientId) return res.status(400).json({ error: 'clientId required' });
 
@@ -53,6 +53,7 @@ export async function uploadBriefingDoc(req: AuthRequest, res: Response) {
       data: {
         officeId,
         clientId,
+        initiativeId: initiativeId || null,
         filename,
         mimeType,
         extractedText,
@@ -62,6 +63,8 @@ export async function uploadBriefingDoc(req: AuthRequest, res: Response) {
       },
       include: {
         client: { select: { id: true, name: true } },
+        office: { select: { id: true, name: true } },
+        initiative: { select: { id: true, title: true } },
       },
     });
     return res.status(201).json(serialize(doc));
@@ -83,6 +86,7 @@ export async function listBriefingDocs(req: AuthRequest, res: Response) {
       include: {
         client: { select: { id: true, name: true } },
         office: { select: { id: true, name: true } },
+        initiative: { select: { id: true, title: true } },
       },
       orderBy: { uploadedAt: 'desc' },
     });
