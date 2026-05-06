@@ -2,7 +2,8 @@ import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { Settings, LogOut } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useClientContext } from './ClientContext';
-import { ClaudeChat } from './components/BubbaChat';
+import { QuickOpportunity } from './components/QuickOpportunity';
+import { BookmarkCapturePickup } from './components/BookmarkCapturePickup';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -75,7 +76,8 @@ export function Layout() {
         Signal Ridge Strategies · Workflow Collaboration
       </footer>
 
-      <ClaudeChat />
+      <QuickOpportunity />
+      <BookmarkCapturePickup />
     </div>
   );
 }

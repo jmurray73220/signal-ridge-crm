@@ -24,6 +24,8 @@ import workflowRoutes from './routes/workflow';
 import bubbaRoutes from './routes/bubba';
 import recycleBinRoutes from './routes/recycleBin';
 import botRoutes from './routes/bot';
+import { receiveBookmarkPost, bookmarkletSource } from './controllers/bookmarkletController';
+import { requireAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { startBackgroundSync } from './services/gmail';
 
@@ -126,6 +128,20 @@ app.use('/crm', express.static(clientDistPath));
 app.get(/^\/crm(\/.*)?$/, (_req, res) => {
   res.sendFile(path.join(clientDistPath, 'index.html'));
 });
+
+// Bookmarklet form-POST receiver — must be registered BEFORE the workflow
+// SPA static handler so it actually runs. Uses urlencoded parsing because
+// the bookmarklet submits a standard HTML form.
+app.post(
+  '/workflow/from-bookmark',
+  express.urlencoded({ extended: true, limit: '5mb' }),
+  requireAuth,
+  receiveBookmarkPost,
+);
+
+// Public bookmarklet source (the JS the bookmark runs). Served unauthenticated
+// so the user's browser can fetch it from anywhere.
+app.get('/workflow/bookmarklet.js', bookmarkletSource);
 
 // Workflow SPA at /workflow
 app.use('/workflow', express.static(workflowClientDistPath));

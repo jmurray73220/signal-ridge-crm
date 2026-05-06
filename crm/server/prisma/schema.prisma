@@ -638,6 +638,23 @@ model WorkflowSOWVersion {
   createdBy       User?   @relation("WorkflowSOWVersionCreatedBy", fields: [createdByUserId], references: [id])
 }
 
+// ─── Bookmarklet Capture ─────────────────────────────────────────────────────
+// When a user clicks the workflow bookmarklet on a foreign tab (e.g. an eBuy
+// solicitation behind their login), the bookmarklet form-POSTs the scraped
+// page text here. We persist it briefly so the user's CRM tab can pick it up
+// and turn it into a contract opportunity track.
+
+model BookmarkCapture {
+  id         String    @id @default(uuid())
+  userId     String
+  pageUrl    String
+  pageText   String    // Scraped innerText from the foreign tab — capped at ~200KB
+  capturedAt DateTime  @default(now())
+  consumedAt DateTime? // Set when the SPA picks it up and creates a track
+
+  @@index([userId, consumedAt])
+}
+
 model WorkflowComment {
   id           String              @id @default(uuid())
   actionItemId String?

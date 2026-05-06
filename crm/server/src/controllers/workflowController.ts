@@ -468,6 +468,12 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
     return;
   }
 
+  await runOpportunityExtraction(trackId, pageText);
+}
+
+// Opus-driven structured-output extraction. Used by both URL and pasted-text
+// flows. Updates aiExtractionStatus + the structured fields it can fill.
+async function runOpportunityExtraction(trackId: string, pageText: string): Promise<void> {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const sys = `You extract structured fields from a US-government contract opportunity announcement. Return ONLY valid JSON matching the schema. Use null for any field you cannot find. Do not invent values.`;
@@ -482,10 +488,10 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
 }
 
 Source page text:
-${pageText}`;
+${pageText.slice(0, 60_000)}`;
 
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-opus-4-7',
       max_tokens: 1500,
       system: sys,
       messages: [{ role: 'user', content: schemaPrompt }],
@@ -495,10 +501,10 @@ ${pageText}`;
       .filter(b => b.type === 'text')
       .map(b => (b as any).text)
       .join('\n');
-    console.log(`[extractTrackFromUrl] track=${trackId} model returned ${text.length} chars`);
+    console.log(`[runOpportunityExtraction] track=${trackId} model returned ${text.length} chars`);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn(`[extractTrackFromUrl] track=${trackId} no JSON found in response`);
+      console.warn(`[runOpportunityExtraction] track=${trackId} no JSON found in response`);
       await prisma.workflowTrack.update({
         where: { id: trackId },
         data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
@@ -506,7 +512,7 @@ ${pageText}`;
       return;
     }
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log(`[extractTrackFromUrl] track=${trackId} parsed:`, JSON.stringify(parsed));
+    console.log(`[runOpportunityExtraction] track=${trackId} parsed:`, JSON.stringify(parsed));
 
     const data: any = {
       aiExtractionStatus: 'ok',
@@ -531,11 +537,39 @@ ${pageText}`;
       data,
     });
   } catch (err) {
-    console.error('[extractTrackFromUrl] Claude call failed:', err);
+    console.error('[runOpportunityExtraction] Claude call failed:', err);
     await prisma.workflowTrack.update({
       where: { id: trackId },
       data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
     }).catch(() => undefined);
+  }
+}
+
+// Manual paste fallback — user grabs the page text from a logged-in browser
+// tab and pastes it into the track. Same Claude extraction.
+export async function extractTrackFromText(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  const { text } = req.body as { text?: string };
+  if (!text || text.trim().length < 100) {
+    return res.status(400).json({ error: 'Provide at least 100 characters of opportunity page text' });
+  }
+  try {
+    const track = await prisma.workflowTrack.findUnique({ where: { id } });
+    if (!track) return res.status(404).json({ error: 'Not found' });
+    if (!assertClientAccess(req, track.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    await prisma.workflowTrack.update({
+      where: { id },
+      data: { aiExtractionStatus: 'pending' },
+    });
+
+    runOpportunityExtraction(id, text).catch(err => {
+      console.error('[extractTrackFromText] background failed:', err);
+    });
+    return res.json({ status: 'pending' });
+  } catch (err) {
+    console.error('[extractTrackFromText]', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 }
 

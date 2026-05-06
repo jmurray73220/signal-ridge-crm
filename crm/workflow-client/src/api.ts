@@ -69,6 +69,35 @@ export async function bubbaChat(messages: { role: 'user' | 'assistant'; content:
   const { data } = await api.post<{ reply: string }>('/api/bubba/chat', { messages });
   return data;
 }
+
+export async function extractTrackFromText(trackId: string, text: string) {
+  const { data } = await api.post(`/api/workflow/tracks/${trackId}/extract-from-text`, { text });
+  return data;
+}
+
+export interface BookmarkCapture {
+  id: string;
+  userId: string;
+  pageUrl: string;
+  pageText: string;
+  capturedAt: string;
+  consumedAt: string | null;
+}
+
+export async function getBookmarkCapture(id: string): Promise<BookmarkCapture> {
+  const { data } = await api.get(`/api/workflow/bookmark-captures/${id}`);
+  return data;
+}
+
+export async function listPendingBookmarkCaptures(): Promise<BookmarkCapture[]> {
+  const { data } = await api.get('/api/workflow/bookmark-captures');
+  return data;
+}
+
+export async function consumeBookmarkCapture(id: string) {
+  const { data } = await api.post(`/api/workflow/bookmark-captures/${id}/consume`);
+  return data;
+}
 export async function updateTrack(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/tracks/${id}`, body);
   return data;

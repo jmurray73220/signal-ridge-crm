@@ -18,6 +18,7 @@ import {
   deleteMilestone,
   updateActionItem,
   retryExtractTrack,
+  extractTrackFromText,
 } from '../api';
 import type {
   WorkflowTrack,
@@ -972,6 +973,9 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
   const status = track.aiExtractionStatus;
   const isPending = status === 'pending';
   const [retrying, setRetrying] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pastedText, setPastedText] = useState('');
+  const [pasting, setPasting] = useState(false);
 
   // Poll while extraction is running so fields fill in without a manual reload.
   useEffect(() => {
@@ -994,6 +998,27 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       setRetrying(false);
     }
   }
+
+  async function submitPasted() {
+    if (pastedText.trim().length < 100) {
+      toast.error('Paste at least 100 characters of the page');
+      return;
+    }
+    setPasting(true);
+    try {
+      await extractTrackFromText(track.id, pastedText);
+      toast.success('Claude is reading the pasted text');
+      setShowPaste(false);
+      setPastedText('');
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setPasting(false);
+    }
+  }
+
+  const showFallback = isAdmin && (status === 'blocked' || status === 'failed' || status === 'partial');
 
   return (
     <div className="card mb-4" style={{ borderColor: '#24375a' }}>
@@ -1031,15 +1056,15 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       )}
       {status === 'blocked' && (
         <div className="text-xs text-status-amber mb-3">
-          Couldn't read this URL automatically (likely behind a login). Ask Claude in the chat panel, or paste the fields manually below.
+          Couldn't read this URL automatically (likely behind a login or JS-rendered). Open the page in a tab where you're logged in, copy all the text, and paste it below.
         </div>
       )}
       {status === 'failed' && (
-        <div className="text-xs text-status-red mb-3">Extraction failed. Try Re-extract or fill in manually.</div>
+        <div className="text-xs text-status-red mb-3">Extraction failed. Try Re-extract, or paste the page text below.</div>
       )}
       {status === 'partial' && (
         <div className="text-xs text-status-amber mb-3">
-          Claude could only fill some fields from this URL. Edit any that are missing.
+          Claude could only fill some fields from this URL. Edit any that are missing, or paste the full page text below for another pass.
         </div>
       )}
 
@@ -1057,6 +1082,51 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
         <div className="mt-3">
           <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Objective</div>
           <p className="text-sm text-text-primary whitespace-pre-wrap">{track.objective}</p>
+        </div>
+      )}
+
+      {showFallback && (
+        <div className="mt-4 pt-3" style={{ borderTop: '1px solid #24375a' }}>
+          {!showPaste ? (
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => setShowPaste(true)}
+            >
+              Paste page text instead
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <label className="label">Page text</label>
+              <textarea
+                className="input"
+                rows={6}
+                value={pastedText}
+                onChange={e => setPastedText(e.target.value)}
+                placeholder="Open the opportunity in a tab where you're signed in, Ctrl+A → Ctrl+C → paste here"
+                style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: '12px' }}
+                disabled={pasting}
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => { setShowPaste(false); setPastedText(''); }}
+                  disabled={pasting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary text-xs"
+                  onClick={submitPasted}
+                  disabled={pasting || pastedText.trim().length < 100}
+                >
+                  {pasting ? 'Submitting…' : 'Extract from pasted text'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

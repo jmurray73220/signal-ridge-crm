@@ -6,6 +6,11 @@ import {
   requireWorkflowAdmin,
 } from '../middleware/workflowAuth';
 import * as ctl from '../controllers/workflowController';
+import {
+  getBookmarkCapture,
+  listPendingBookmarkCaptures,
+  consumeBookmarkCapture,
+} from '../controllers/bookmarkletController';
 
 const router = Router();
 
@@ -29,6 +34,7 @@ router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
 router.post('/tracks', requireWorkflowAdmin, ctl.createTrack);
 router.post('/tracks/:id/extract-from-url', requireWorkflowAdmin, ctl.retryExtractTrackFromUrl);
+router.post('/tracks/:id/extract-from-text', requireWorkflowAdmin, ctl.extractTrackFromText);
 router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);
 router.delete('/tracks/:id', requireWorkflowAdmin, ctl.deleteTrack);
 // Singular alias per spec
@@ -77,5 +83,12 @@ router.delete('/comments/:id', ctl.deleteComment);
 // Workflow user admin
 router.get('/users', requireWorkflowAdmin, ctl.listWorkflowUsers);
 router.patch('/users/:id/workflow-role', requireWorkflowAdmin, ctl.setWorkflowRole);
+
+// Bookmarklet captures — the bookmarklet POSTs to /workflow/from-bookmark
+// (top-level, registered in index.ts). These endpoints are for the SPA to
+// look up and consume a capture once it's been received.
+router.get('/bookmark-captures', listPendingBookmarkCaptures);
+router.get('/bookmark-captures/:id', getBookmarkCapture);
+router.post('/bookmark-captures/:id/consume', consumeBookmarkCapture);
 
 export default router;
