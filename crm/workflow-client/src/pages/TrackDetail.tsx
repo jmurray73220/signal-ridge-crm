@@ -986,7 +986,7 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
     setRetrying(true);
     try {
       await retryExtractTrack(track.id);
-      toast.success('Bubba is reading the URL again');
+      toast.success('Claude is reading the URL again');
       qc.invalidateQueries({ queryKey: ['track', track.id] });
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Retry failed');
@@ -1026,12 +1026,12 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
 
       {isPending && (
         <div className="text-xs text-text-muted italic mb-3">
-          Bubba is reading the URL — fields will fill in shortly.
+          Claude is reading the URL — fields will fill in shortly.
         </div>
       )}
       {status === 'blocked' && (
         <div className="text-xs text-status-amber mb-3">
-          Couldn't read this URL automatically (likely behind a login). Hand off to Bubba in chat, or paste the fields manually below.
+          Couldn't read this URL automatically (likely behind a login). Ask Claude in the chat panel, or paste the fields manually below.
         </div>
       )}
       {status === 'failed' && (
@@ -1039,7 +1039,7 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       )}
       {status === 'partial' && (
         <div className="text-xs text-status-amber mb-3">
-          Bubba could only fill some fields from this URL. Edit any that are missing.
+          Claude could only fill some fields from this URL. Edit any that are missing.
         </div>
       )}
 

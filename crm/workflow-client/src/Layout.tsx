@@ -2,7 +2,7 @@ import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { Settings, LogOut } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useClientContext } from './ClientContext';
-import { BubbaChat } from './components/BubbaChat';
+import { ClaudeChat } from './components/BubbaChat';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -75,7 +75,7 @@ export function Layout() {
         Signal Ridge Strategies · Workflow Collaboration
       </footer>
 
-      <BubbaChat />
+      <ClaudeChat />
     </div>
   );
 }

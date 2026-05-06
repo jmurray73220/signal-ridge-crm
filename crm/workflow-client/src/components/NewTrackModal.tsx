@@ -62,12 +62,12 @@ export function NewTrackModal({ loading, onClose, onSubmit }: Props) {
                 autoFocus
               />
               <p className="text-xs text-text-muted mt-1.5">
-                Bubba will fetch this URL and fill in solicitation #, vehicle type, due date, funding ceiling, and objective. You can edit anything afterwards.
+                Claude will fetch this URL and fill in solicitation #, vehicle type, due date, funding ceiling, and objective. You can edit anything afterwards.
               </p>
             </div>
           )}
           <div>
-            <label className="label">Title{isOpp ? ' (optional — Bubba will rename if blank)' : ''}</label>
+            <label className="label">Title{isOpp ? ' (optional — Claude will rename if blank)' : ''}</label>
             <input
               className="input"
               value={title}

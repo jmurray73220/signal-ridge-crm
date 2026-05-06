@@ -405,6 +405,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
 const VEHICLE_TYPES = ['SBIR-PhI', 'SBIR-PhII', 'STTR', 'OTA', 'BAA', 'CSO', 'RFP', 'IDIQ-TO', 'Grant', 'Other'];
 
 export async function extractTrackFromUrl(trackId: string, url: string): Promise<void> {
+  console.log(`[extractTrackFromUrl] start track=${trackId} url=${url}`);
   // Set status pending (idempotent — re-running is safe).
   await prisma.workflowTrack.update({
     where: { id: trackId },
@@ -484,7 +485,7 @@ Source page text:
 ${pageText}`;
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1500,
       system: sys,
       messages: [{ role: 'user', content: schemaPrompt }],
@@ -494,8 +495,10 @@ ${pageText}`;
       .filter(b => b.type === 'text')
       .map(b => (b as any).text)
       .join('\n');
+    console.log(`[extractTrackFromUrl] track=${trackId} model returned ${text.length} chars`);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.warn(`[extractTrackFromUrl] track=${trackId} no JSON found in response`);
       await prisma.workflowTrack.update({
         where: { id: trackId },
         data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
@@ -503,6 +506,7 @@ ${pageText}`;
       return;
     }
     const parsed = JSON.parse(jsonMatch[0]);
+    console.log(`[extractTrackFromUrl] track=${trackId} parsed:`, JSON.stringify(parsed));
 
     const data: any = {
       aiExtractionStatus: 'ok',

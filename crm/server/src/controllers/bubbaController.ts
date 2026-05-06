@@ -14,7 +14,7 @@ type ChatMessage = {
   content: string;
 };
 
-const SYSTEM_PROMPT = `You are Bubba, an assistant for the Signal Ridge CRM workflow tool. You help the user manage workflow tracks for their clients.
+const SYSTEM_PROMPT = `You are an assistant for the Signal Ridge CRM workflow tool. You help the user manage workflow tracks for their clients.
 
 When the user asks to create a track for a contract opportunity, call the create_workflow_track tool. The user typically pastes a URL (sam.gov, DSIP, grants.gov, an agency portal, etc.) — pass it through unchanged. Always identify the client by the name the user gives.
 
@@ -121,7 +121,7 @@ export async function bubbaChat(req: AuthRequest, res: Response) {
     let finalText = '';
     for (let turn = 0; turn < 4; turn++) {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1500,
         system: SYSTEM_PROMPT,
         tools: TOOLS,

@@ -72,7 +72,7 @@ export function Dashboard() {
       });
       toast.success(
         data.isContractOpportunity && data.opportunityUrl
-          ? 'Track created — Bubba is reading the URL'
+          ? 'Track created — Claude is reading the URL'
           : 'Track created'
       );
       qc.invalidateQueries({ queryKey: ['tracks', selectedClientId] });

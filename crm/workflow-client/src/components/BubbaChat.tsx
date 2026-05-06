@@ -8,11 +8,11 @@ type ChatMessage = { role: 'user' | 'assistant'; content: string };
 const INITIAL_MESSAGE: ChatMessage = {
   role: 'assistant',
   content:
-    "Hi, I'm Bubba. Tell me what you need — e.g. \"create a track for [client] from [URL]\" and I'll set it up.",
+    "Hi, I'm Claude. Tell me what you need — e.g. \"create a track for [client] from [URL]\" and I'll set it up.",
 };
 
 // Renders inline Markdown-ish "[track:UUID]" tokens as actual links into the
-// app, so Bubba's confirmation messages are clickable.
+// app, so Claude's confirmation messages are clickable.
 function renderMessage(content: string) {
   const parts = content.split(/(\[track:[a-f0-9-]+\])/i);
   return parts.map((part, i) => {
@@ -28,7 +28,7 @@ function renderMessage(content: string) {
   });
 }
 
-export function BubbaChat() {
+export function ClaudeChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
@@ -57,7 +57,7 @@ export function BubbaChat() {
     } catch (err: any) {
       setMessages([
         ...next,
-        { role: 'assistant', content: `Error: ${err?.response?.data?.error || 'Bubba is unavailable'}` },
+        { role: 'assistant', content: `Error: ${err?.response?.data?.error || 'Claude is unavailable'}` },
       ]);
     } finally {
       setSending(false);
@@ -73,7 +73,7 @@ export function BubbaChat() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium shadow-lg hover:scale-105 transition-transform"
           style={{ background: '#c9a84c', color: '#0d1117' }}
         >
-          <Sparkles size={16} /> Ask Bubba
+          <Sparkles size={16} /> Ask Claude
         </button>
       )}
 
@@ -95,7 +95,7 @@ export function BubbaChat() {
           >
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-accent" />
-              <span className="text-sm font-semibold">Bubba</span>
+              <span className="text-sm font-semibold">Claude</span>
               <span className="text-xs text-text-muted">workflow assistant</span>
             </div>
             <button onClick={() => setOpen(false)} className="text-text-muted hover:text-accent">
@@ -125,7 +125,7 @@ export function BubbaChat() {
             ))}
             {sending && (
               <div className="flex items-center gap-2 text-xs text-text-muted">
-                <Loader2 size={12} className="animate-spin" /> Bubba is thinking…
+                <Loader2 size={12} className="animate-spin" /> Claude is thinking…
               </div>
             )}
           </div>
@@ -142,7 +142,7 @@ export function BubbaChat() {
                     send();
                   }
                 }}
-                placeholder="Ask Bubba anything…"
+                placeholder="Ask Claude anything…"
                 disabled={sending}
                 autoFocus
               />
