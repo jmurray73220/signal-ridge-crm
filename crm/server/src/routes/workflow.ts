@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middleware/auth';
 import {
   requireWorkflow,
@@ -11,8 +12,16 @@ import {
   listPendingBookmarkCaptures,
   consumeBookmarkCapture,
 } from '../controllers/bookmarkletController';
+import {
+  uploadPhaseAttachment,
+  downloadPhaseAttachment,
+  deletePhaseAttachment,
+  createPhaseLink,
+  deletePhaseLink,
+} from '../controllers/phaseAssetsController';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 router.use(requireAuth);
 router.use(requireWorkflow);
@@ -33,6 +42,7 @@ router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);
 router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
 router.post('/tracks', requireWorkflowAdmin, ctl.createTrack);
+router.post('/tracks/probe-url', requireWorkflowAdmin, ctl.probeOpportunityUrl);
 router.post('/tracks/:id/extract-from-url', requireWorkflowAdmin, ctl.retryExtractTrackFromUrl);
 router.post('/tracks/:id/extract-from-text', requireWorkflowAdmin, ctl.extractTrackFromText);
 router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);
@@ -49,6 +59,13 @@ router.post('/orphan-initiatives/:initiativeId/promote', requireWorkflowAdmin, c
 router.post('/phases', requireWorkflowAdmin, ctl.createPhase);
 router.put('/phases/:id', requireWorkflowAdmin, ctl.updatePhase);
 router.delete('/phases/:id', requireWorkflowAdmin, ctl.deletePhase);
+
+// Phase attachments + links — files and important URLs scoped to a phase.
+router.post('/phases/:phaseId/attachments', requireWorkflowEditor, upload.single('file'), uploadPhaseAttachment);
+router.get('/phase-attachments/:attachmentId/download', downloadPhaseAttachment);
+router.delete('/phase-attachments/:attachmentId', requireWorkflowEditor, deletePhaseAttachment);
+router.post('/phases/:phaseId/links', requireWorkflowEditor, createPhaseLink);
+router.delete('/phase-links/:linkId', requireWorkflowEditor, deletePhaseLink);
 
 // Milestones (UI label: "Steps") — Editors can create/update/delete since
 // step changes are routine operational work for anyone assigned to the

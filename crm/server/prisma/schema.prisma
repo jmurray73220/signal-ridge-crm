@@ -503,16 +503,28 @@ model WorkflowTrack {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  // Contract opportunity flag + minimal opportunity fields. Drives whether
-  // the track gets a SOW button, opportunity field section, and seeded
-  // proposal-cycle phases. Filled in by Claude when the user supplies a URL.
+  // Contract opportunity flag + opportunity fields. Drives whether the
+  // track gets a SOW button, opportunity field section, and seeded
+  // proposal-cycle phases. Most fields filled in by Claude when the user
+  // supplies a URL or pasted page text.
   isContractOpportunity Boolean   @default(false)
   opportunityUrl        String?
   solicitationNumber    String?
   vehicleType           String?   // SBIR-PhI | SBIR-PhII | STTR | OTA | BAA | CSO | RFP | IDIQ-TO | Grant | Other
+  issuingAgency         String?   // e.g. "USSOCOM SOF AT&L", "AFRL/RIGA"
+  questionsDueDate      DateTime?
   proposalDueDate       DateTime?
+  periodOfPerformance   String?
   fundingCeiling        String?
+  fundingFloor          String?
+  fundingAuthority      String?   // e.g. "10 U.S.C. 4022 and 4023"
+  eligibility           String?
+  submissionFormat      String?
   objective             String?
+  focusAreas            String    @default("[]") // JSON: [{name, summary}]
+  targetedFocusAreas    String    @default("[]") // JSON array of names the user picked as in-scope
+  pointsOfContact       String    @default("[]") // JSON: [{name, role, email}]
+  additionalSections    String    @default("[]") // JSON: [{heading, content}] — catch-all
   aiExtractionStatus    String?   // pending | ok | partial | blocked | failed
   aiExtractedAt         DateTime?
 
@@ -542,7 +554,34 @@ model WorkflowPhase {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  milestones WorkflowMilestone[]
+  milestones  WorkflowMilestone[]
+  attachments PhaseAttachment[]
+  links       PhaseLink[]
+}
+
+model PhaseAttachment {
+  id               String        @id @default(uuid())
+  phaseId          String
+  phase            WorkflowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  filename         String
+  mimeType         String
+  fileData         String        // Base64-encoded original file
+  uploadedAt       DateTime      @default(now())
+  uploadedByUserId String?
+
+  @@index([phaseId])
+}
+
+model PhaseLink {
+  id        String        @id @default(uuid())
+  phaseId   String
+  phase     WorkflowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  url       String
+  label     String?       // optional display name; falls back to URL hostname
+  createdAt DateTime      @default(now())
+  createdByUserId String?
+
+  @@index([phaseId])
 }
 
 model WorkflowMilestone {

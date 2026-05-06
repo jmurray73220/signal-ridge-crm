@@ -75,6 +75,39 @@ export async function extractTrackFromText(trackId: string, text: string) {
   return data;
 }
 
+export async function probeOpportunityUrl(url: string): Promise<{ ok: boolean; reason?: string; status?: number }> {
+  const { data } = await api.post('/api/workflow/tracks/probe-url', { url });
+  return data;
+}
+
+export async function uploadPhaseAttachment(phaseId: string, file: File) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const { data } = await api.post(`/api/workflow/phases/${phaseId}/attachments`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export function phaseAttachmentDownloadUrl(attachmentId: string) {
+  return `/api/workflow/phase-attachments/${attachmentId}/download`;
+}
+
+export async function deletePhaseAttachment(attachmentId: string) {
+  const { data } = await api.delete(`/api/workflow/phase-attachments/${attachmentId}`);
+  return data;
+}
+
+export async function createPhaseLink(phaseId: string, body: { url: string; label?: string }) {
+  const { data } = await api.post(`/api/workflow/phases/${phaseId}/links`, body);
+  return data;
+}
+
+export async function deletePhaseLink(linkId: string) {
+  const { data } = await api.delete(`/api/workflow/phase-links/${linkId}`);
+  return data;
+}
+
 export interface BookmarkCapture {
   id: string;
   userId: string;

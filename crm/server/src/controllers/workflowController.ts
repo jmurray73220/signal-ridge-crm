@@ -221,6 +221,20 @@ export async function listTracks(req: AuthRequest, res: Response) {
   }
 }
 
+function parseTrackJsonFields<T extends Record<string, any>>(track: T): T {
+  const safeParse = (v: any, fallback: any) => {
+    if (typeof v !== 'string') return fallback;
+    try { return JSON.parse(v); } catch { return fallback; }
+  };
+  return {
+    ...track,
+    focusAreas: safeParse((track as any).focusAreas, []),
+    targetedFocusAreas: safeParse((track as any).targetedFocusAreas, []),
+    pointsOfContact: safeParse((track as any).pointsOfContact, []),
+    additionalSections: safeParse((track as any).additionalSections, []),
+  };
+}
+
 export async function getTrack(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
@@ -238,6 +252,16 @@ export async function getTrack(req: AuthRequest, res: Response) {
                 },
               },
             },
+            // Strip the heavy fileData blob from the listing — clients fetch it
+            // via the dedicated download endpoint when they need the bytes.
+            attachments: {
+              select: {
+                id: true, phaseId: true, filename: true, mimeType: true,
+                uploadedAt: true, uploadedByUserId: true,
+              },
+              orderBy: { uploadedAt: 'desc' },
+            },
+            links: { orderBy: { createdAt: 'desc' } },
           },
         },
       },
@@ -251,7 +275,7 @@ export async function getTrack(req: AuthRequest, res: Response) {
       where: { trackId: id },
       select: { id: true, title: true, status: true, updatedAt: true },
     });
-    return res.json({ ...applyDerivedPhaseStatus(track), sow });
+    return res.json({ ...parseTrackJsonFields(applyDerivedPhaseStatus(track) as any), sow });
   } catch (err) {
     console.error('[getTrack]', err);
     return res.status(500).json({ error: 'Server error' });
@@ -321,14 +345,15 @@ async function upsertMirrorInitiative(params: {
 }
 
 // Default phases seeded onto a contract-opportunity track. Editable later —
-// users can rename, reorder, delete, or add their own.
-const OPPORTUNITY_PHASES = [
-  { title: 'Capture & Triage', description: 'Initial review, bid/no-bid decision, capture plan.' },
-  { title: 'Pre-proposal', description: 'Submit clarifying questions, white paper, or RFI response.' },
-  { title: 'Proposal Development', description: 'Draft technical, cost, management, and past-performance volumes.' },
-  { title: 'Compliance & Submission', description: 'Section L/M compliance check, page-count audit, final upload.' },
-  { title: 'Post-submission', description: 'Vendor Q&A, oral presentations, BAFO if requested.' },
-  { title: 'Award Decision', description: 'Debrief on loss, kickoff on win.' },
+// users can rename, reorder, delete, or add their own. The first phase is
+// active out of the gate; the rest are queued.
+const OPPORTUNITY_PHASES: { title: string; description: string; status: 'InProgress' | 'NotStarted' }[] = [
+  { title: 'Capture & Triage', description: 'Initial review, bid/no-bid decision, capture plan.', status: 'InProgress' },
+  { title: 'Pre-proposal', description: 'Submit clarifying questions, white paper, or RFI response.', status: 'NotStarted' },
+  { title: 'Proposal Development', description: 'Draft technical, cost, management, and past-performance volumes.', status: 'NotStarted' },
+  { title: 'Compliance & Submission', description: 'Section L/M compliance check, page-count audit, final upload.', status: 'NotStarted' },
+  { title: 'Post-submission', description: 'Vendor Q&A, oral presentations, BAFO if requested.', status: 'NotStarted' },
+  { title: 'Award Decision', description: 'Debrief on loss, kickoff on win.', status: 'NotStarted' },
 ];
 
 export async function createTrack(req: AuthRequest, res: Response) {
@@ -361,6 +386,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
           trackId: track.id,
           title: p.title,
           description: p.description,
+          status: p.status,
           sortOrder: i,
         })),
       });
@@ -476,23 +502,49 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
 async function runOpportunityExtraction(trackId: string, pageText: string): Promise<void> {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const sys = `You extract structured fields from a US-government contract opportunity announcement. Return ONLY valid JSON matching the schema. Use null for any field you cannot find. Do not invent values.`;
-    const schemaPrompt = `Schema:
+    const sys = `You extract opportunity details from a US-government contract solicitation, BAA, OTA, SBIR/STTR topic, or RFP.
+
+Rules:
+- Return ONLY a single valid JSON object. No prose before or after.
+- Be SPECIFIC. Quote concrete language from the source — agency names, dollar figures, dates, statutory citations, focus area titles, eligibility terms — exactly as written.
+- For "objective": write 4-7 sentences. Cover what is being solicited, who is soliciting it, why, and the operational context. Reference the named program/initiative if there is one.
+- For "focusAreas": include EVERY focus area, topic, technical area, or numbered TA/TE listed. For each, give a 2-4 sentence summary that captures the technical specifics, not just the title. If a focus area has sub-bullets describing technologies of interest, include them.
+- "additionalSections": catch-all for anything else the user would care about that doesn't fit the named fields. Examples: classification level, page limits, oral defense requirements, set-aside notes, Q&A windows, team composition rules, IP/data-rights language, place of performance.
+- For ANY field you cannot find in the source, set its value to null. Do not invent or infer beyond what the text says.
+- Date fields must be ISO 8601 (YYYY-MM-DD). If only a month/year is given, use the first of the month. If only a quarter is given, leave null.`;
+
+    const schemaPrompt = `Return JSON exactly matching this shape:
 {
-  "title": "string — short opportunity title",
-  "solicitationNumber": "string — solicitation/topic/announcement number, or null",
-  "vehicleType": "one of ${JSON.stringify(VEHICLE_TYPES)} or null",
-  "proposalDueDate": "ISO 8601 date (YYYY-MM-DD) or null — final proposal due date",
-  "fundingCeiling": "string — phrased as written, e.g. '$1.8M for Phase II', or null",
-  "objective": "string — 2-4 sentence summary of the technical objective"
+  "title": "string — concise opportunity title (program/initiative name + topic if applicable)",
+  "solicitationNumber": "string — solicitation/topic/announcement number (e.g. SOCOM-25-001), or null",
+  "vehicleType": "one of ${JSON.stringify(VEHICLE_TYPES)} or null — pick the closest match",
+  "issuingAgency": "string — issuing organization with sub-org if stated (e.g. 'USSOCOM SOF AT&L'), or null",
+  "fundingAuthority": "string — statutory authority if cited (e.g. '10 U.S.C. 4022 and 4023'), or null",
+  "questionsDueDate": "ISO date or null — deadline to submit clarifying questions",
+  "proposalDueDate": "ISO date or null — final proposal/white paper submission deadline",
+  "periodOfPerformance": "string as written, e.g. '12 months base + 12 months option', or null",
+  "fundingFloor": "string as written, e.g. '$250K', or null",
+  "fundingCeiling": "string as written, e.g. '$1.8M for Phase II', or null",
+  "eligibility": "string — eligibility/qualification terms quoted from the source, or null",
+  "submissionFormat": "string — submission process and required volumes/format, or null",
+  "objective": "string — 4-7 sentence detailed summary",
+  "focusAreas": [
+    { "name": "string — focus area title as written", "summary": "string — 2-4 sentence technical summary with specifics" }
+  ],
+  "pointsOfContact": [
+    { "name": "string", "role": "string (e.g. Contracting Officer, Technical POC)", "email": "string or null" }
+  ],
+  "additionalSections": [
+    { "heading": "string — a short title for the section", "content": "string — 1-3 sentence summary" }
+  ]
 }
 
 Source page text:
-${pageText.slice(0, 60_000)}`;
+${pageText.slice(0, 80_000)}`;
 
     const message = await client.messages.create({
       model: 'claude-opus-4-7',
-      max_tokens: 1500,
+      max_tokens: 4000,
       system: sys,
       messages: [{ role: 'user', content: schemaPrompt }],
     });
@@ -511,8 +563,18 @@ ${pageText.slice(0, 60_000)}`;
       });
       return;
     }
-    const parsed = JSON.parse(jsonMatch[0]);
-    console.log(`[runOpportunityExtraction] track=${trackId} parsed:`, JSON.stringify(parsed));
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.warn(`[runOpportunityExtraction] track=${trackId} JSON parse failed:`, parseErr);
+      await prisma.workflowTrack.update({
+        where: { id: trackId },
+        data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
+      });
+      return;
+    }
+    console.log(`[runOpportunityExtraction] track=${trackId} parsed keys:`, Object.keys(parsed).join(','));
 
     const data: any = {
       aiExtractionStatus: 'ok',
@@ -521,16 +583,32 @@ ${pageText.slice(0, 60_000)}`;
     if (parsed.title && typeof parsed.title === 'string') data.title = parsed.title;
     if (parsed.solicitationNumber) data.solicitationNumber = String(parsed.solicitationNumber);
     if (parsed.vehicleType && VEHICLE_TYPES.includes(parsed.vehicleType)) data.vehicleType = parsed.vehicleType;
+    if (parsed.issuingAgency) data.issuingAgency = String(parsed.issuingAgency);
+    if (parsed.fundingAuthority) data.fundingAuthority = String(parsed.fundingAuthority);
+    if (parsed.questionsDueDate) {
+      const d = new Date(parsed.questionsDueDate);
+      if (!isNaN(d.getTime())) data.questionsDueDate = d;
+    }
     if (parsed.proposalDueDate) {
       const d = new Date(parsed.proposalDueDate);
       if (!isNaN(d.getTime())) data.proposalDueDate = d;
     }
+    if (parsed.periodOfPerformance) data.periodOfPerformance = String(parsed.periodOfPerformance);
+    if (parsed.fundingFloor) data.fundingFloor = String(parsed.fundingFloor);
     if (parsed.fundingCeiling) data.fundingCeiling = String(parsed.fundingCeiling);
+    if (parsed.eligibility) data.eligibility = String(parsed.eligibility);
+    if (parsed.submissionFormat) data.submissionFormat = String(parsed.submissionFormat);
     if (parsed.objective) data.objective = String(parsed.objective);
 
+    // JSON arrays — store as strings, default to empty array string.
+    data.focusAreas = JSON.stringify(Array.isArray(parsed.focusAreas) ? parsed.focusAreas : []);
+    data.pointsOfContact = JSON.stringify(Array.isArray(parsed.pointsOfContact) ? parsed.pointsOfContact : []);
+    data.additionalSections = JSON.stringify(Array.isArray(parsed.additionalSections) ? parsed.additionalSections : []);
+
     // Mark partial if Claude couldn't fill at least the basics.
-    const filled = ['solicitationNumber', 'vehicleType', 'proposalDueDate', 'objective'].filter(k => data[k]).length;
-    if (filled === 0) data.aiExtractionStatus = 'partial';
+    const basicFilled = ['solicitationNumber', 'vehicleType', 'proposalDueDate', 'objective'].filter(k => data[k]).length;
+    const focusCount = Array.isArray(parsed.focusAreas) ? parsed.focusAreas.length : 0;
+    if (basicFilled === 0 && focusCount === 0) data.aiExtractionStatus = 'partial';
 
     await prisma.workflowTrack.update({
       where: { id: trackId },
@@ -542,6 +620,61 @@ ${pageText.slice(0, 60_000)}`;
       where: { id: trackId },
       data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
     }).catch(() => undefined);
+  }
+}
+
+// Pre-flight URL probe used by the create-opportunity modal. Tells the UI
+// whether the server can actually read this URL before we commit to creating
+// the track. If it can't, the user gets paste/bookmarklet options up front
+// instead of finding out later by visiting the track.
+export async function probeOpportunityUrl(req: AuthRequest, res: Response) {
+  const { url } = req.body as { url?: string };
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ ok: false, reason: 'invalid_url' });
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const resp = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
+        'Accept': 'text/html,application/xhtml+xml,application/pdf,*/*',
+      },
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      return res.json({ ok: false, status: resp.status, reason: 'http_error' });
+    }
+    // Read a small slice to confirm it's not a JS-only shell. If the body is
+    // tiny or all <script> tags, the page is probably a SPA we can't parse.
+    const ct = resp.headers.get('content-type') || '';
+    let preview = '';
+    try {
+      const body = await resp.text();
+      preview = body.slice(0, 50_000);
+    } catch {
+      return res.json({ ok: false, reason: 'unreadable_body' });
+    }
+    if (ct.includes('application/pdf')) {
+      return res.json({ ok: true, contentType: 'pdf' });
+    }
+    const visibleText = preview
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (visibleText.length < 200) {
+      return res.json({ ok: false, reason: 'js_only_or_empty' });
+    }
+    return res.json({ ok: true, contentType: 'html', textLength: visibleText.length });
+  } catch (err: any) {
+    console.error('[probeOpportunityUrl]', err);
+    return res.json({ ok: false, reason: err?.name === 'AbortError' ? 'timeout' : 'fetch_failed' });
   }
 }
 
@@ -596,28 +729,43 @@ export async function updateTrack(req: AuthRequest, res: Response) {
   const { id } = req.params;
   const {
     title, description, fundingVehicle, status, sortOrder,
-    opportunityUrl, solicitationNumber, vehicleType, proposalDueDate, fundingCeiling, objective,
+    opportunityUrl, solicitationNumber, vehicleType,
+    issuingAgency, fundingAuthority,
+    questionsDueDate, proposalDueDate, periodOfPerformance,
+    fundingFloor, fundingCeiling,
+    eligibility, submissionFormat, objective,
+    focusAreas, targetedFocusAreas, pointsOfContact, additionalSections,
   } = req.body;
   try {
     const existing = await prisma.workflowTrack.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
     if (!assertClientAccess(req, existing.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
-    const track = await prisma.workflowTrack.update({
-      where: { id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description }),
-        ...(fundingVehicle !== undefined && { fundingVehicle }),
-        ...(status !== undefined && { status }),
-        ...(sortOrder !== undefined && { sortOrder }),
-        ...(opportunityUrl !== undefined && { opportunityUrl: opportunityUrl || null }),
-        ...(solicitationNumber !== undefined && { solicitationNumber: solicitationNumber || null }),
-        ...(vehicleType !== undefined && { vehicleType: vehicleType || null }),
-        ...(proposalDueDate !== undefined && { proposalDueDate: proposalDueDate ? new Date(proposalDueDate) : null }),
-        ...(fundingCeiling !== undefined && { fundingCeiling: fundingCeiling || null }),
-        ...(objective !== undefined && { objective: objective || null }),
-      },
-    });
+    const data: any = {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(fundingVehicle !== undefined && { fundingVehicle }),
+      ...(status !== undefined && { status }),
+      ...(sortOrder !== undefined && { sortOrder }),
+      ...(opportunityUrl !== undefined && { opportunityUrl: opportunityUrl || null }),
+      ...(solicitationNumber !== undefined && { solicitationNumber: solicitationNumber || null }),
+      ...(vehicleType !== undefined && { vehicleType: vehicleType || null }),
+      ...(issuingAgency !== undefined && { issuingAgency: issuingAgency || null }),
+      ...(fundingAuthority !== undefined && { fundingAuthority: fundingAuthority || null }),
+      ...(questionsDueDate !== undefined && { questionsDueDate: questionsDueDate ? new Date(questionsDueDate) : null }),
+      ...(proposalDueDate !== undefined && { proposalDueDate: proposalDueDate ? new Date(proposalDueDate) : null }),
+      ...(periodOfPerformance !== undefined && { periodOfPerformance: periodOfPerformance || null }),
+      ...(fundingFloor !== undefined && { fundingFloor: fundingFloor || null }),
+      ...(fundingCeiling !== undefined && { fundingCeiling: fundingCeiling || null }),
+      ...(eligibility !== undefined && { eligibility: eligibility || null }),
+      ...(submissionFormat !== undefined && { submissionFormat: submissionFormat || null }),
+      ...(objective !== undefined && { objective: objective || null }),
+    };
+    if (Array.isArray(focusAreas)) data.focusAreas = JSON.stringify(focusAreas);
+    if (Array.isArray(targetedFocusAreas)) data.targetedFocusAreas = JSON.stringify(targetedFocusAreas);
+    if (Array.isArray(pointsOfContact)) data.pointsOfContact = JSON.stringify(pointsOfContact);
+    if (Array.isArray(additionalSections)) data.additionalSections = JSON.stringify(additionalSections);
+
+    const track = await prisma.workflowTrack.update({ where: { id }, data });
 
     // Keep mirror initiative in sync
     try {

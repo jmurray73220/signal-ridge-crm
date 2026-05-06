@@ -32,6 +32,7 @@ import type {
 import { StatusBadge } from './Dashboard';
 import { useAuth } from '../AuthContext';
 import { Modal, PromptModal, ConfirmModal } from '../components/Modal';
+import { PhaseAssetsPanel } from '../components/PhaseAssetsPanel';
 
 async function fetchTrack(id: string): Promise<WorkflowTrack> {
   const { data } = await api.get(`/api/workflow/tracks/${id}`);
@@ -382,6 +383,8 @@ export function TrackDetail() {
                 sortOrder: m.actionItems.length,
               })
             }
+            trackId={track.id}
+            canUploadFiles={canEditSteps}
           />
         ))}
         {track.phases.length === 0 && (
@@ -613,6 +616,8 @@ function PhaseBlock({
   onDeleteStep,
   onActionStatusChange,
   onAddAction,
+  trackId,
+  canUploadFiles,
 }: {
   phase: WorkflowPhase;
   isAdmin: boolean;
@@ -624,6 +629,8 @@ function PhaseBlock({
   onDeleteStep: (m: WorkflowMilestone) => void;
   onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
   onAddAction: (m: WorkflowMilestone) => void;
+  trackId: string;
+  canUploadFiles: boolean;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -676,22 +683,31 @@ function PhaseBlock({
       </div>
 
       {open && (
-        <div className="mt-4 hierarchy-line space-y-3">
-          {phase.milestones.map((m) => (
-            <MilestoneBlock
-              key={m.id}
-              milestone={m}
-              canEdit={canEditSteps}
-              onEdit={() => onEditStep(m)}
-              onDelete={() => onDeleteStep(m)}
-              onAddAction={() => onAddAction(m)}
-              onActionStatusChange={onActionStatusChange}
-            />
-          ))}
-          {phase.milestones.length === 0 && (
-            <div className="text-text-muted text-sm italic">No steps</div>
-          )}
-        </div>
+        <>
+          <PhaseAssetsPanel
+            phaseId={phase.id}
+            trackId={trackId}
+            attachments={phase.attachments || []}
+            links={phase.links || []}
+            canEdit={canUploadFiles}
+          />
+          <div className="mt-4 hierarchy-line space-y-3">
+            {phase.milestones.map((m) => (
+              <MilestoneBlock
+                key={m.id}
+                milestone={m}
+                canEdit={canEditSteps}
+                onEdit={() => onEditStep(m)}
+                onDelete={() => onDeleteStep(m)}
+                onAddAction={() => onAddAction(m)}
+                onActionStatusChange={onActionStatusChange}
+              />
+            ))}
+            {phase.milestones.length === 0 && (
+              <div className="text-text-muted text-sm italic">No steps</div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -982,7 +998,7 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
     if (!isPending) return;
     const t = setInterval(() => {
       qc.invalidateQueries({ queryKey: ['track', track.id] });
-    }, 4000);
+    }, 3000);
     return () => clearInterval(t);
   }, [isPending, qc, track.id]);
 
@@ -1018,7 +1034,22 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
     }
   }
 
+  async function toggleFocusArea(name: string) {
+    const current = track.targetedFocusAreas || [];
+    const next = current.includes(name) ? current.filter(n => n !== name) : [...current, name];
+    try {
+      await updateTrack(track.id, { targetedFocusAreas: next });
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch {
+      toast.error('Failed to save selection');
+    }
+  }
+
   const showFallback = isAdmin && (status === 'blocked' || status === 'failed' || status === 'partial');
+  const focusAreas = track.focusAreas || [];
+  const targeted = track.targetedFocusAreas || [];
+  const pocs = track.pointsOfContact || [];
+  const sections = track.additionalSections || [];
 
   return (
     <div className="card mb-4" style={{ borderColor: '#24375a' }}>
@@ -1051,12 +1082,12 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
 
       {isPending && (
         <div className="text-xs text-text-muted italic mb-3">
-          Claude is reading the URL — fields will fill in shortly.
+          Claude is reading — fields will fill in shortly.
         </div>
       )}
       {status === 'blocked' && (
         <div className="text-xs text-status-amber mb-3">
-          Couldn't read this URL automatically (likely behind a login or JS-rendered). Open the page in a tab where you're logged in, copy all the text, and paste it below.
+          Couldn't read this URL automatically. Paste the page text below, or use the bookmarklet from Admin → Advanced.
         </div>
       )}
       {status === 'failed' && (
@@ -1064,24 +1095,109 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       )}
       {status === 'partial' && (
         <div className="text-xs text-status-amber mb-3">
-          Claude could only fill some fields from this URL. Edit any that are missing, or paste the full page text below for another pass.
+          Claude could only fill part of the announcement. Paste the full page text below for another pass.
         </div>
       )}
 
+      {/* Always-visible header fields. Show "—" if missing so user knows what was checked. */}
       <div className="grid grid-cols-2 gap-3 text-sm">
-        {track.solicitationNumber && (
-          <Field label="Solicitation #">{track.solicitationNumber}</Field>
-        )}
-        {track.vehicleType && <Field label="Vehicle">{track.vehicleType}</Field>}
-        {track.proposalDueDate && (
-          <Field label="Proposal Due">{new Date(track.proposalDueDate).toLocaleDateString()}</Field>
-        )}
-        {track.fundingCeiling && <Field label="Funding">{track.fundingCeiling}</Field>}
+        <Field label="Solicitation #">{track.solicitationNumber || dash()}</Field>
+        <Field label="Vehicle">{track.vehicleType || dash()}</Field>
+        <Field label="Issuing Agency">{track.issuingAgency || dash()}</Field>
+        <Field label="Funding Authority">{track.fundingAuthority || dash()}</Field>
+        <Field label="Questions Due">{track.questionsDueDate ? new Date(track.questionsDueDate).toLocaleDateString() : dash()}</Field>
+        <Field label="Proposal Due">{track.proposalDueDate ? new Date(track.proposalDueDate).toLocaleDateString() : dash()}</Field>
+        <Field label="Period of Performance">{track.periodOfPerformance || dash()}</Field>
+        <Field label="Funding">
+          {[track.fundingFloor, track.fundingCeiling].filter(Boolean).join(' – ') || dash()}
+        </Field>
       </div>
-      {track.objective && (
-        <div className="mt-3">
-          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Objective</div>
-          <p className="text-sm text-text-primary whitespace-pre-wrap">{track.objective}</p>
+
+      <div className="mt-3">
+        <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Objective</div>
+        <p className="text-sm text-text-primary whitespace-pre-wrap">{track.objective || notStated()}</p>
+      </div>
+
+      {focusAreas.length > 0 && (
+        <div className="mt-4">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-2">
+            Focus Areas — check the ones you're targeting
+          </div>
+          <div className="space-y-2">
+            {focusAreas.map((fa, i) => {
+              const isPicked = targeted.includes(fa.name);
+              return (
+                <label
+                  key={`${fa.name}-${i}`}
+                  className="flex items-start gap-2 p-2.5 rounded cursor-pointer transition-colors"
+                  style={{
+                    background: isPicked ? 'rgba(201,168,76,0.1)' : '#0d1117',
+                    border: `1px solid ${isPicked ? '#c9a84c' : '#24375a'}`,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isPicked}
+                    onChange={() => toggleFocusArea(fa.name)}
+                    className="mt-1"
+                    style={{ accentColor: '#c9a84c' }}
+                    disabled={!isAdmin}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary">{fa.name}</div>
+                    {fa.summary && (
+                      <p className="text-xs text-text-muted mt-1 whitespace-pre-wrap">{fa.summary}</p>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(track.eligibility || isAdmin) && (
+        <div className="mt-4">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Eligibility</div>
+          <p className="text-sm text-text-primary whitespace-pre-wrap">{track.eligibility || notStated()}</p>
+        </div>
+      )}
+
+      {(track.submissionFormat || isAdmin) && (
+        <div className="mt-4">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Submission Format</div>
+          <p className="text-sm text-text-primary whitespace-pre-wrap">{track.submissionFormat || notStated()}</p>
+        </div>
+      )}
+
+      {pocs.length > 0 && (
+        <div className="mt-4">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Points of Contact</div>
+          <div className="space-y-1.5">
+            {pocs.map((poc, i) => (
+              <div key={i} className="text-sm">
+                <span className="text-text-primary font-medium">{poc.name || '—'}</span>
+                {poc.role && <span className="text-text-muted"> · {poc.role}</span>}
+                {poc.email && (
+                  <a className="ml-2 text-accent" href={`mailto:${poc.email}`}>{poc.email}</a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sections.length > 0 && (
+        <div className="mt-4">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Other Notes</div>
+          <div className="space-y-2">
+            {sections.map((s, i) => (
+              <div key={i}>
+                <div className="text-xs font-semibold text-text-primary">{s.heading}</div>
+                <p className="text-xs text-text-muted whitespace-pre-wrap">{s.content}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1093,7 +1209,7 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
               className="btn-secondary text-xs"
               onClick={() => setShowPaste(true)}
             >
-              Paste page text instead
+              Paste page text for re-extraction
             </button>
           ) : (
             <div className="space-y-2">
@@ -1131,6 +1247,13 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       )}
     </div>
   );
+}
+
+function dash() {
+  return <span className="text-text-muted italic">—</span>;
+}
+function notStated() {
+  return <span className="text-text-muted italic">Not stated in the announcement.</span>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

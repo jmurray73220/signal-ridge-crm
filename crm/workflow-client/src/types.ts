@@ -52,6 +52,24 @@ export interface WorkflowMilestone {
   actionItems: WorkflowActionItem[];
 }
 
+export interface PhaseAttachment {
+  id: string;
+  phaseId: string;
+  filename: string;
+  mimeType: string;
+  uploadedAt: string;
+  uploadedByUserId: string | null;
+  sizeBytes?: number;
+}
+
+export interface PhaseLink {
+  id: string;
+  phaseId: string;
+  url: string;
+  label: string | null;
+  createdAt: string;
+}
+
 export interface WorkflowPhase {
   id: string;
   trackId: string;
@@ -62,7 +80,13 @@ export interface WorkflowPhase {
   status: PhaseStatus;
   sortOrder: number;
   milestones: WorkflowMilestone[];
+  attachments?: PhaseAttachment[];
+  links?: PhaseLink[];
 }
+
+export interface FocusArea { name: string; summary?: string }
+export interface PointOfContact { name?: string; role?: string; email?: string | null }
+export interface AdditionalSection { heading: string; content: string }
 
 export interface WorkflowTrack {
   id: string;
@@ -76,9 +100,20 @@ export interface WorkflowTrack {
   opportunityUrl?: string | null;
   solicitationNumber?: string | null;
   vehicleType?: string | null;
+  issuingAgency?: string | null;
+  fundingAuthority?: string | null;
+  questionsDueDate?: string | null;
   proposalDueDate?: string | null;
+  periodOfPerformance?: string | null;
+  fundingFloor?: string | null;
   fundingCeiling?: string | null;
+  eligibility?: string | null;
+  submissionFormat?: string | null;
   objective?: string | null;
+  focusAreas?: FocusArea[];
+  targetedFocusAreas?: string[];
+  pointsOfContact?: PointOfContact[];
+  additionalSections?: AdditionalSection[];
   aiExtractionStatus?: 'pending' | 'ok' | 'partial' | 'blocked' | 'failed' | null;
   aiExtractedAt?: string | null;
   phases: WorkflowPhase[];
