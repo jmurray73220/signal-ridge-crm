@@ -28,36 +28,53 @@ function AddUserModal({
   onSave: () => void;
   workflowClients: Array<{ id: string; name: string }>;
 }) {
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    role: 'Viewer' as UserRole,
-    temporaryPassword: '',
-    workflowRole: '' as WorkflowRole | '',
-    workflowClientId: '' as string,
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
+    queryKey: ['client-contacts-for-user'],
+    queryFn: () => usersApi.clientContacts().then(r => r.data),
   });
+
+  const [contactId, setContactId] = useState('');
+  const [hasCrm, setHasCrm] = useState(true);
+  const [crmRole, setCrmRole] = useState<UserRole>('Viewer');
+  const [hasWorkflow, setHasWorkflow] = useState(false);
+  const [workflowRole, setWorkflowRole] = useState<WorkflowRole | ''>('');
+  const [workflowClientId, setWorkflowClientId] = useState('');
+  const [temporaryPassword, setTemporaryPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm(f => ({ ...f, [key]: e.target.value }));
-
-  const requiresClient = form.workflowRole === 'WorkflowEditor' || form.workflowRole === 'WorkflowViewer';
+  const picked = contacts.find(c => c.id === contactId) || null;
+  const requiresClient = workflowRole === 'WorkflowEditor' || workflowRole === 'WorkflowViewer';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (requiresClient && !form.workflowClientId) {
-      toast.error('Please select a Client Space for this workflow role');
+    if (!picked) {
+      toast.error('Pick a CRM contact');
+      return;
+    }
+    if (!hasCrm && !hasWorkflow) {
+      toast.error('Pick at least one access type — CRM or Workflow');
+      return;
+    }
+    if (hasWorkflow && !workflowRole) {
+      toast.error('Pick a Workflow role');
+      return;
+    }
+    if (hasWorkflow && requiresClient && !workflowClientId) {
+      toast.error('Workflow Editor/Viewer needs a Client Space');
       return;
     }
     setLoading(true);
     try {
       await usersApi.create({
-        ...form,
-        workflowRole: form.workflowRole || null,
-        workflowClientId: requiresClient ? form.workflowClientId : null,
+        firstName: picked.firstName,
+        lastName: picked.lastName,
+        email: picked.email,
+        temporaryPassword,
+        role: hasCrm ? crmRole : null,
+        workflowRole: hasWorkflow ? workflowRole : null,
+        workflowClientId: hasWorkflow && requiresClient ? workflowClientId : null,
       });
-      toast.success(`User ${form.email} created`);
+      toast.success(`User ${picked.email} created`);
       onSave();
     } catch (err: unknown) {
       console.error('Create user error:', err);
@@ -74,72 +91,154 @@ function AddUserModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-md rounded-xl overflow-hidden" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
+      <div className="w-full max-w-md rounded-xl overflow-hidden" style={{ background: '#1c2333', border: '1px solid #30363d', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #30363d' }}>
           <h2 className="text-base font-semibold" style={{ color: '#e6edf3' }}>Add User</h2>
           <button onClick={onClose} style={{ color: '#8b949e' }}><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">First Name *</label>
-              <input className="input" value={form.firstName} onChange={set('firstName')} required />
-            </div>
-            <div>
-              <label className="label">Last Name *</label>
-              <input className="input" value={form.lastName} onChange={set('lastName')} required />
-            </div>
-          </div>
           <div>
-            <label className="label">Email *</label>
-            <input type="email" className="input" value={form.email} onChange={set('email')} required />
-          </div>
-          <div>
-            <label className="label">CRM Role *</label>
-            <select className="input" value={form.role} onChange={set('role')}>
-              {ROLES.map(r => <option key={r}>{r}</option>)}
-            </select>
+            <label className="label">CRM Contact *</label>
+            {contactsLoading ? (
+              <div className="text-sm" style={{ color: '#8b949e' }}>Loading contacts…</div>
+            ) : contacts.length === 0 ? (
+              <div className="text-sm" style={{ color: '#8b949e' }}>
+                No eligible contacts. Add a CRM contact under a Client entity (with an email) first.
+              </div>
+            ) : (
+              <select
+                className="input"
+                value={contactId}
+                onChange={e => setContactId(e.target.value)}
+                required
+              >
+                <option value="">Select a contact…</option>
+                {contacts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.firstName} {c.lastName} — {c.entity.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <p className="text-xs mt-1" style={{ color: '#8b949e' }}>
-              Admin: full. Editor: add/edit, no delete. Viewer: read-only.
+              Only contacts working for a CRM Client are eligible. Name and email are pulled from their record.
             </p>
           </div>
 
-          <div className="pt-2" style={{ borderTop: '1px solid #30363d' }} />
-
-          <div>
-            <label className="label">Workflow Role</label>
-            <select className="input" value={form.workflowRole} onChange={set('workflowRole')}>
-              <option value="">None (no workflow access)</option>
-              <option value="WorkflowAdmin">Workflow Admin (all clients)</option>
-              <option value="WorkflowEditor">Workflow Editor</option>
-              <option value="WorkflowViewer">Workflow Viewer</option>
-            </select>
-          </div>
-          {requiresClient && (
-            <div>
-              <label className="label">Client Space *</label>
-              <select className="input" value={form.workflowClientId} onChange={set('workflowClientId')} required>
-                <option value="">Select a client…</option>
-                {workflowClients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <p className="text-xs mt-1" style={{ color: '#8b949e' }}>
-                This user will only see workflow data for the selected client.
-              </p>
+          {picked && (
+            <div className="rounded p-3" style={{ background: '#0d1117', border: '1px solid #30363d' }}>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs uppercase tracking-wider" style={{ color: '#8b949e' }}>Name</div>
+                  <div style={{ color: '#e6edf3' }}>{picked.firstName} {picked.lastName}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider" style={{ color: '#8b949e' }}>Email</div>
+                  <div style={{ color: '#e6edf3' }}>{picked.email}</div>
+                </div>
+                {picked.title && (
+                  <div className="col-span-2">
+                    <div className="text-xs uppercase tracking-wider" style={{ color: '#8b949e' }}>Title</div>
+                    <div style={{ color: '#e6edf3' }}>{picked.title}</div>
+                  </div>
+                )}
+                <div className="col-span-2">
+                  <div className="text-xs uppercase tracking-wider" style={{ color: '#8b949e' }}>Client</div>
+                  <div style={{ color: '#e6edf3' }}>{picked.entity.name}</div>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="pt-2" style={{ borderTop: '1px solid #30363d' }} />
+          <div className="pt-2" style={{ borderTop: '1px solid #30363d' }}>
+            <div className="text-xs uppercase tracking-wider mb-3" style={{ color: '#8b949e' }}>Access</div>
 
-          <div>
+            <label className="flex items-start gap-2.5 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasCrm}
+                onChange={e => setHasCrm(e.target.checked)}
+                className="mt-0.5"
+                style={{ accentColor: '#c9a84c' }}
+              />
+              <div className="flex-1">
+                <div className="text-sm" style={{ color: '#e6edf3' }}>CRM access</div>
+                {hasCrm && (
+                  <select
+                    className="input mt-1.5 text-sm"
+                    value={crmRole}
+                    onChange={e => setCrmRole(e.target.value as UserRole)}
+                  >
+                    {ROLES.map(r => <option key={r}>{r}</option>)}
+                  </select>
+                )}
+                <p className="text-xs mt-1" style={{ color: '#8b949e' }}>
+                  Admin: full. Editor: add/edit, no delete. Viewer: read-only.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-2.5 mb-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasWorkflow}
+                onChange={e => setHasWorkflow(e.target.checked)}
+                className="mt-0.5"
+                style={{ accentColor: '#c9a84c' }}
+              />
+              <div className="flex-1">
+                <div className="text-sm" style={{ color: '#e6edf3' }}>Workflow access</div>
+                {hasWorkflow && (
+                  <>
+                    <select
+                      className="input mt-1.5 text-sm"
+                      value={workflowRole}
+                      onChange={e => setWorkflowRole(e.target.value as WorkflowRole | '')}
+                    >
+                      <option value="">Select a workflow role…</option>
+                      <option value="WorkflowAdmin">Workflow Admin (all clients)</option>
+                      <option value="WorkflowEditor">Workflow Editor</option>
+                      <option value="WorkflowViewer">Workflow Viewer</option>
+                    </select>
+                    {requiresClient && (
+                      <select
+                        className="input mt-1.5 text-sm"
+                        value={workflowClientId}
+                        onChange={e => setWorkflowClientId(e.target.value)}
+                        required
+                      >
+                        <option value="">Select a Client Space…</option>
+                        {workflowClients.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </>
+                )}
+              </div>
+            </label>
+          </div>
+
+          <div className="pt-2" style={{ borderTop: '1px solid #30363d' }}>
             <label className="label">Temporary Password *</label>
-            <input type="password" className="input" value={form.temporaryPassword} onChange={set('temporaryPassword')} required minLength={8} />
+            <input
+              type="password"
+              className="input"
+              value={temporaryPassword}
+              onChange={e => setTemporaryPassword(e.target.value)}
+              required
+              minLength={8}
+            />
             <p className="text-xs mt-1" style={{ color: '#8b949e' }}>User will be required to change this on first login.</p>
           </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary">
+            <button
+              type="submit"
+              disabled={loading || !picked || (!hasCrm && !hasWorkflow)}
+              className="btn-primary"
+            >
               {loading ? 'Creating…' : 'Create User'}
             </button>
           </div>
@@ -248,14 +347,15 @@ export function Users() {
                     <td className="px-4 py-3 text-sm" style={{ color: '#8b949e' }}>{u.email}</td>
                     <td className="px-4 py-3">
                       {u.id === currentUser?.id ? (
-                        <span className="text-sm" style={{ color: '#8b949e' }}>{u.role}</span>
+                        <span className="text-sm" style={{ color: '#8b949e' }}>{u.role || '—'}</span>
                       ) : (
                         <select
                           className="input w-auto text-sm py-1"
-                          value={u.role}
+                          value={u.role || ''}
                           onChange={e => updateRole.mutate({ id: u.id, role: e.target.value })}
                         >
-                          {ROLES.map(r => <option key={r}>{r}</option>)}
+                          <option value="">None</option>
+                          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       )}
                     </td>

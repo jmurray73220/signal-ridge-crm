@@ -135,6 +135,15 @@ export const usersApi = {
     api.patch(`/api/users/${id}/active`, { isActive }),
   workflowClients: () =>
     api.get<Array<{ id: string; name: string }>>('/api/users/workflow-clients'),
+  clientContacts: () =>
+    api.get<Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      title: string | null;
+      entity: { id: string; name: string };
+    }>>('/api/users/client-contacts'),
 };
 
 // Reminders

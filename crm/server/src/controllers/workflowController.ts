@@ -160,16 +160,21 @@ export async function deleteClient(req: AuthRequest, res: Response) {
  * Empty containers default to InProgress (per user: "if there are no steps,
  * the phase should be in progress" — same rule applies to empty steps).
  */
-function deriveStepStatus(actionItems: Array<{ status: string }>): string {
-  if (actionItems.length === 0) return 'InProgress';
+function deriveStepStatus(actionItems: Array<{ status: string }>, stored: string): string {
+  // No action items yet: honor whatever was stored (e.g. seeded NotStarted on
+  // a brand-new step). Returning 'InProgress' here would override that.
+  if (actionItems.length === 0) return stored;
   if (actionItems.every(a => a.status === 'Done')) return 'Completed';
   if (actionItems.some(a => a.status === 'Blocked')) return 'Blocked';
   if (actionItems.every(a => a.status === 'Todo')) return 'NotStarted';
   return 'InProgress';
 }
 
-function derivePhaseStatus(milestones: Array<{ status: string }>): string {
-  if (milestones.length === 0) return 'InProgress';
+function derivePhaseStatus(milestones: Array<{ status: string }>, stored: string): string {
+  // Same rule as steps: an empty phase keeps its stored status. The seeded
+  // proposal-cycle phases use this to mark phase 0 InProgress and the rest
+  // NotStarted; without honoring stored, all six would render InProgress.
+  if (milestones.length === 0) return stored;
   if (milestones.every(m => m.status === 'Completed')) return 'Completed';
   if (milestones.some(m => m.status === 'Blocked')) return 'Blocked';
   if (milestones.every(m => m.status === 'NotStarted')) return 'NotStarted';
@@ -183,9 +188,9 @@ function derivePhaseStatus(milestones: Array<{ status: string }>): string {
 function applyDerivedPhaseStatus<T extends { phases: Array<{ status: string; milestones: Array<{ status: string; actionItems: Array<{ status: string }> }> }> }>(track: T): T {
   for (const phase of track.phases) {
     for (const m of phase.milestones) {
-      m.status = deriveStepStatus(m.actionItems);
+      m.status = deriveStepStatus(m.actionItems, m.status);
     }
-    phase.status = derivePhaseStatus(phase.milestones);
+    phase.status = derivePhaseStatus(phase.milestones, phase.status);
   }
   return track;
 }

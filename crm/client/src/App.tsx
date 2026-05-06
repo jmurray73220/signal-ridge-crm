@@ -53,6 +53,12 @@ function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; 
 
   if (!user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
+  // Workflow-only users (role=null) shouldn't see the CRM. Bounce them to
+  // the workflow app entirely; they'll re-auth there with the same cookie.
+  if (!user.role && user.workflowRole) {
+    if (typeof window !== 'undefined') window.location.replace('/workflow/');
+    return null;
+  }
   if (adminOnly && user.role !== 'Admin') return <Navigate to="/" replace />;
 
   return <Layout>{children}</Layout>;

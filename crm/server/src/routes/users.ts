@@ -6,6 +6,7 @@ import {
   updateUserRole,
   toggleUserActive,
   listWorkflowClients,
+  listClientContactsForUser,
   updateUserWorkflowRole,
 } from '../controllers/usersController';
 
@@ -15,6 +16,7 @@ router.use(requireAuth);
 
 router.get('/', requireAdmin, getUsers);
 router.get('/workflow-clients', requireAdmin, listWorkflowClients);
+router.get('/client-contacts', requireAdmin, listClientContactsForUser);
 router.post('/', requireAdmin, createUser);
 router.patch('/:id/role', requireAdmin, updateUserRole);
 router.patch('/:id/workflow-role', requireAdmin, updateUserWorkflowRole);

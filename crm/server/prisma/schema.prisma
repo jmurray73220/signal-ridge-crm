@@ -16,7 +16,7 @@ model User {
   passwordHash       String
   firstName          String
   lastName           String
-  role               String          @default("Viewer") // UserRole: Admin | Editor | Viewer
+  role               String?         // UserRole: Admin | Editor | Viewer | null (workflow-only user)
   workflowRole       String? // WorkflowRole: WorkflowAdmin | WorkflowEditor | WorkflowViewer
   workflowClientId   String?
   workflowClient     WorkflowClient? @relation("WorkflowClientUsers", fields: [workflowClientId], references: [id])

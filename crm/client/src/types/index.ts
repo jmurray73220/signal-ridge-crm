@@ -13,7 +13,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: UserRole;
+  role: UserRole | null;
   workflowRole?: WorkflowRole | null;
   workflowClientId?: string | null;
   workflowClient?: { id: string; name: string } | null;
