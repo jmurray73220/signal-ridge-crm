@@ -53,8 +53,20 @@ export async function createTrack(body: {
   description?: string;
   fundingVehicle?: string;
   sortOrder?: number;
+  isContractOpportunity?: boolean;
+  opportunityUrl?: string;
 }) {
   const { data } = await api.post('/api/workflow/tracks', body);
+  return data;
+}
+
+export async function retryExtractTrack(trackId: string) {
+  const { data } = await api.post(`/api/workflow/tracks/${trackId}/extract-from-url`);
+  return data;
+}
+
+export async function bubbaChat(messages: { role: 'user' | 'assistant'; content: string }[]) {
+  const { data } = await api.post<{ reply: string }>('/api/bubba/chat', { messages });
   return data;
 }
 export async function updateTrack(id: string, body: Record<string, unknown>) {

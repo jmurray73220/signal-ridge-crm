@@ -21,6 +21,7 @@ import budgetRoutes from './routes/budgets';
 import reportTemplateRoutes from './routes/reportTemplates';
 import settingsRoutes from './routes/settings';
 import workflowRoutes from './routes/workflow';
+import bubbaRoutes from './routes/bubba';
 import recycleBinRoutes from './routes/recycleBin';
 import botRoutes from './routes/bot';
 import { errorHandler } from './middleware/errorHandler';
@@ -72,6 +73,7 @@ app.use('/api/budgets', budgetRoutes);
 app.use('/api/report-templates', reportTemplateRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/workflow', workflowRoutes);
+app.use('/api/bubba', bubbaRoutes);
 app.use('/api/bot', botRoutes);
 app.use('/api', recycleBinRoutes);
 

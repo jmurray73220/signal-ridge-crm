@@ -72,6 +72,15 @@ export interface WorkflowTrack {
   fundingVehicle: string | null;
   status: TrackStatus;
   sortOrder: number;
+  isContractOpportunity?: boolean;
+  opportunityUrl?: string | null;
+  solicitationNumber?: string | null;
+  vehicleType?: string | null;
+  proposalDueDate?: string | null;
+  fundingCeiling?: string | null;
+  objective?: string | null;
+  aiExtractionStatus?: 'pending' | 'ok' | 'partial' | 'blocked' | 'failed' | null;
+  aiExtractedAt?: string | null;
   phases: WorkflowPhase[];
   sow?: { id: string; title: string; status: SOWStatus; updatedAt: string } | null;
 }

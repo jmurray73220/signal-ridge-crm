@@ -28,6 +28,7 @@ router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);
 router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
 router.post('/tracks', requireWorkflowAdmin, ctl.createTrack);
+router.post('/tracks/:id/extract-from-url', requireWorkflowAdmin, ctl.retryExtractTrackFromUrl);
 router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);
 router.delete('/tracks/:id', requireWorkflowAdmin, ctl.deleteTrack);
 // Singular alias per spec

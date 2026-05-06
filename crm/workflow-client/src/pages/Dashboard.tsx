@@ -13,7 +13,7 @@ import {
 import { useAuth } from '../AuthContext';
 import { useClientContext } from '../ClientContext';
 import type { WorkflowTrack, WorkflowActionItem } from '../types';
-import { PromptModal } from '../components/Modal';
+import { NewTrackModal } from '../components/NewTrackModal';
 
 type View = 'kanban' | 'list';
 
@@ -60,12 +60,21 @@ export function Dashboard() {
     }
   }, [activeClient]);
 
-  async function submitTrack(title: string) {
+  async function submitTrack(data: { title: string; isContractOpportunity: boolean; opportunityUrl?: string }) {
     if (!selectedClientId) return;
     setCreating(true);
     try {
-      await createTrack({ workflowClientId: selectedClientId, title });
-      toast.success('Track created');
+      await createTrack({
+        workflowClientId: selectedClientId,
+        title: data.title,
+        isContractOpportunity: data.isContractOpportunity,
+        opportunityUrl: data.opportunityUrl,
+      });
+      toast.success(
+        data.isContractOpportunity && data.opportunityUrl
+          ? 'Track created — Bubba is reading the URL'
+          : 'Track created'
+      );
       qc.invalidateQueries({ queryKey: ['tracks', selectedClientId] });
       setNewTrackOpen(false);
     } catch (err: any) {
@@ -133,11 +142,7 @@ export function Dashboard() {
       ) : null}
 
       {newTrackOpen && (
-        <PromptModal
-          title="New track"
-          label="Track title"
-          placeholder="e.g. Genesis Resubmission"
-          submitLabel="Create track"
+        <NewTrackModal
           loading={creating}
           onClose={() => setNewTrackOpen(false)}
           onSubmit={submitTrack}

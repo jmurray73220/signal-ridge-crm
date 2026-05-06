@@ -503,6 +503,19 @@ model WorkflowTrack {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
+  // Contract opportunity flag + minimal opportunity fields. Drives whether
+  // the track gets a SOW button, opportunity field section, and seeded
+  // proposal-cycle phases. Filled in by Claude when the user supplies a URL.
+  isContractOpportunity Boolean   @default(false)
+  opportunityUrl        String?
+  solicitationNumber    String?
+  vehicleType           String?   // SBIR-PhI | SBIR-PhII | STTR | OTA | BAA | CSO | RFP | IDIQ-TO | Grant | Other
+  proposalDueDate       DateTime?
+  fundingCeiling        String?
+  objective             String?
+  aiExtractionStatus    String?   // pending | ok | partial | blocked | failed
+  aiExtractedAt         DateTime?
+
   // Mirror into CRM Initiative (soft link — not FK so the workflow tool stays
   // decoupled from CRM table changes). Tracks create a companion Initiative in
   // the CRM with primaryEntity = the workflow client's CRM Entity.

@@ -17,6 +17,7 @@ import {
   updateMilestone,
   deleteMilestone,
   updateActionItem,
+  retryExtractTrack,
 } from '../api';
 import type {
   WorkflowTrack,
@@ -307,6 +308,10 @@ export function TrackDetail() {
         )}
       </div>
 
+      {track.isContractOpportunity && (
+        <OpportunityCard track={track} isAdmin={isAdmin} />
+      )}
+
       <div className="mb-6">
         {track.sow ? (
           <div className="card flex items-center justify-between gap-3 hover:border-accent transition-colors">
@@ -338,7 +343,7 @@ export function TrackDetail() {
               <ArrowRight size={16} className="text-text-muted" />
             </div>
           </div>
-        ) : isAdmin ? (
+        ) : isAdmin && track.isContractOpportunity ? (
           <button
             onClick={() => setAddSowOpen(true)}
             className="card w-full flex items-center justify-center gap-2 text-text-muted hover:text-accent hover:border-accent transition-colors"
@@ -958,6 +963,111 @@ function ActionRow({
       ) : (
         <StatusBadge status={item.status} />
       )}
+    </div>
+  );
+}
+
+function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const status = track.aiExtractionStatus;
+  const isPending = status === 'pending';
+  const [retrying, setRetrying] = useState(false);
+
+  // Poll while extraction is running so fields fill in without a manual reload.
+  useEffect(() => {
+    if (!isPending) return;
+    const t = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [isPending, qc, track.id]);
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      await retryExtractTrack(track.id);
+      toast.success('Bubba is reading the URL again');
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Retry failed');
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className="card mb-4" style={{ borderColor: '#24375a' }}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-accent uppercase tracking-wider">Contract Opportunity</div>
+          {track.opportunityUrl && (
+            <a
+              href={track.opportunityUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-text-muted hover:text-accent break-all"
+            >
+              {track.opportunityUrl}
+            </a>
+          )}
+        </div>
+        {isAdmin && track.opportunityUrl && (
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={retry}
+            disabled={retrying || isPending}
+            title="Re-run Claude extraction"
+          >
+            {retrying || isPending ? 'Reading…' : 'Re-extract'}
+          </button>
+        )}
+      </div>
+
+      {isPending && (
+        <div className="text-xs text-text-muted italic mb-3">
+          Bubba is reading the URL — fields will fill in shortly.
+        </div>
+      )}
+      {status === 'blocked' && (
+        <div className="text-xs text-status-amber mb-3">
+          Couldn't read this URL automatically (likely behind a login). Hand off to Bubba in chat, or paste the fields manually below.
+        </div>
+      )}
+      {status === 'failed' && (
+        <div className="text-xs text-status-red mb-3">Extraction failed. Try Re-extract or fill in manually.</div>
+      )}
+      {status === 'partial' && (
+        <div className="text-xs text-status-amber mb-3">
+          Bubba could only fill some fields from this URL. Edit any that are missing.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        {track.solicitationNumber && (
+          <Field label="Solicitation #">{track.solicitationNumber}</Field>
+        )}
+        {track.vehicleType && <Field label="Vehicle">{track.vehicleType}</Field>}
+        {track.proposalDueDate && (
+          <Field label="Proposal Due">{new Date(track.proposalDueDate).toLocaleDateString()}</Field>
+        )}
+        {track.fundingCeiling && <Field label="Funding">{track.fundingCeiling}</Field>}
+      </div>
+      {track.objective && (
+        <div className="mt-3">
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Objective</div>
+          <p className="text-sm text-text-primary whitespace-pre-wrap">{track.objective}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-text-muted uppercase tracking-wider">{label}</div>
+      <div className="text-sm text-text-primary mt-0.5">{children}</div>
     </div>
   );
 }

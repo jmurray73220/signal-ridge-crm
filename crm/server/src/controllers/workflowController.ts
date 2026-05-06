@@ -320,10 +320,25 @@ async function upsertMirrorInitiative(params: {
   return initiative.id;
 }
 
+// Default phases seeded onto a contract-opportunity track. Editable later —
+// users can rename, reorder, delete, or add their own.
+const OPPORTUNITY_PHASES = [
+  { title: 'Capture & Triage', description: 'Initial review, bid/no-bid decision, capture plan.' },
+  { title: 'Pre-proposal', description: 'Submit clarifying questions, white paper, or RFI response.' },
+  { title: 'Proposal Development', description: 'Draft technical, cost, management, and past-performance volumes.' },
+  { title: 'Compliance & Submission', description: 'Section L/M compliance check, page-count audit, final upload.' },
+  { title: 'Post-submission', description: 'Vendor Q&A, oral presentations, BAFO if requested.' },
+  { title: 'Award Decision', description: 'Debrief on loss, kickoff on win.' },
+];
+
 export async function createTrack(req: AuthRequest, res: Response) {
-  const { workflowClientId, title, description, fundingVehicle, status, sortOrder } = req.body;
+  const {
+    workflowClientId, title, description, fundingVehicle, status, sortOrder,
+    isContractOpportunity, opportunityUrl,
+  } = req.body;
   if (!workflowClientId || !title) return res.status(400).json({ error: 'workflowClientId and title required' });
   try {
+    const isOpp = Boolean(isContractOpportunity);
     const track = await prisma.workflowTrack.create({
       data: {
         workflowClientId,
@@ -332,8 +347,24 @@ export async function createTrack(req: AuthRequest, res: Response) {
         fundingVehicle: fundingVehicle || null,
         status: status || 'Active',
         sortOrder: sortOrder ?? 0,
+        isContractOpportunity: isOpp,
+        opportunityUrl: isOpp && opportunityUrl ? String(opportunityUrl).trim() : null,
+        aiExtractionStatus: isOpp && opportunityUrl ? 'pending' : null,
       },
     });
+
+    // Auto-seed proposal-cycle phases for opportunity tracks. They're free to
+    // delete, rename, reorder, or add their own.
+    if (isOpp) {
+      await prisma.workflowPhase.createMany({
+        data: OPPORTUNITY_PHASES.map((p, i) => ({
+          trackId: track.id,
+          title: p.title,
+          description: p.description,
+          sortOrder: i,
+        })),
+      });
+    }
 
     // Mirror into CRM Initiative
     try {
@@ -352,6 +383,14 @@ export async function createTrack(req: AuthRequest, res: Response) {
       // Non-fatal — track still exists
     }
 
+    // Kick off Claude extraction in the background if we have a URL. Track
+    // status surfaces in the UI so the user knows fields are populating.
+    if (isOpp && opportunityUrl) {
+      extractTrackFromUrl(track.id, String(opportunityUrl).trim()).catch(err => {
+        console.error('[createTrack] background extraction failed:', err);
+      });
+    }
+
     return res.status(201).json(track);
   } catch (err) {
     console.error(err);
@@ -359,9 +398,168 @@ export async function createTrack(req: AuthRequest, res: Response) {
   }
 }
 
+// ─── Contract opportunity AI fill ────────────────────────────────────────────
+// Fetches the URL, hands the page to Claude, and writes back a small set of
+// structured fields on the track. Designed to be called fire-and-forget; all
+// state lives on `aiExtractionStatus`.
+const VEHICLE_TYPES = ['SBIR-PhI', 'SBIR-PhII', 'STTR', 'OTA', 'BAA', 'CSO', 'RFP', 'IDIQ-TO', 'Grant', 'Other'];
+
+export async function extractTrackFromUrl(trackId: string, url: string): Promise<void> {
+  // Set status pending (idempotent — re-running is safe).
+  await prisma.workflowTrack.update({
+    where: { id: trackId },
+    data: { aiExtractionStatus: 'pending' },
+  }).catch(() => undefined);
+
+  let pageText = '';
+  try {
+    const resp = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        // SAM.gov, DSIP, and most public solicitation hosts allow vanilla
+        // browser-style requests. Some agency portals will 403 here — we'll
+        // mark "blocked" and surface to the UI for a Bubba handoff.
+        'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
+        'Accept': 'text/html,application/xhtml+xml,application/pdf,*/*',
+      },
+    });
+    if (!resp.ok) {
+      await prisma.workflowTrack.update({
+        where: { id: trackId },
+        data: { aiExtractionStatus: 'blocked', aiExtractedAt: new Date() },
+      });
+      return;
+    }
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('application/pdf')) {
+      const buf = Buffer.from(await resp.arrayBuffer());
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+      const out = await pdfParse(buf);
+      pageText = (out.text || '').slice(0, 60_000);
+    } else {
+      const html = await resp.text();
+      // Strip script/style/nav garbage and collapse whitespace. Good enough
+      // for Claude — it ignores noise just fine, but smaller payload = faster.
+      pageText = html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 60_000);
+    }
+  } catch (err) {
+    console.error('[extractTrackFromUrl] fetch failed:', err);
+    await prisma.workflowTrack.update({
+      where: { id: trackId },
+      data: { aiExtractionStatus: 'blocked', aiExtractedAt: new Date() },
+    });
+    return;
+  }
+
+  if (pageText.length < 200) {
+    await prisma.workflowTrack.update({
+      where: { id: trackId },
+      data: { aiExtractionStatus: 'blocked', aiExtractedAt: new Date() },
+    });
+    return;
+  }
+
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const sys = `You extract structured fields from a US-government contract opportunity announcement. Return ONLY valid JSON matching the schema. Use null for any field you cannot find. Do not invent values.`;
+    const schemaPrompt = `Schema:
+{
+  "title": "string — short opportunity title",
+  "solicitationNumber": "string — solicitation/topic/announcement number, or null",
+  "vehicleType": "one of ${JSON.stringify(VEHICLE_TYPES)} or null",
+  "proposalDueDate": "ISO 8601 date (YYYY-MM-DD) or null — final proposal due date",
+  "fundingCeiling": "string — phrased as written, e.g. '$1.8M for Phase II', or null",
+  "objective": "string — 2-4 sentence summary of the technical objective"
+}
+
+Source page text:
+${pageText}`;
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: sys,
+      messages: [{ role: 'user', content: schemaPrompt }],
+    });
+
+    const text = message.content
+      .filter(b => b.type === 'text')
+      .map(b => (b as any).text)
+      .join('\n');
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      await prisma.workflowTrack.update({
+        where: { id: trackId },
+        data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
+      });
+      return;
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const data: any = {
+      aiExtractionStatus: 'ok',
+      aiExtractedAt: new Date(),
+    };
+    if (parsed.title && typeof parsed.title === 'string') data.title = parsed.title;
+    if (parsed.solicitationNumber) data.solicitationNumber = String(parsed.solicitationNumber);
+    if (parsed.vehicleType && VEHICLE_TYPES.includes(parsed.vehicleType)) data.vehicleType = parsed.vehicleType;
+    if (parsed.proposalDueDate) {
+      const d = new Date(parsed.proposalDueDate);
+      if (!isNaN(d.getTime())) data.proposalDueDate = d;
+    }
+    if (parsed.fundingCeiling) data.fundingCeiling = String(parsed.fundingCeiling);
+    if (parsed.objective) data.objective = String(parsed.objective);
+
+    // Mark partial if Claude couldn't fill at least the basics.
+    const filled = ['solicitationNumber', 'vehicleType', 'proposalDueDate', 'objective'].filter(k => data[k]).length;
+    if (filled === 0) data.aiExtractionStatus = 'partial';
+
+    await prisma.workflowTrack.update({
+      where: { id: trackId },
+      data,
+    });
+  } catch (err) {
+    console.error('[extractTrackFromUrl] Claude call failed:', err);
+    await prisma.workflowTrack.update({
+      where: { id: trackId },
+      data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
+    }).catch(() => undefined);
+  }
+}
+
+// HTTP wrapper so the user can manually retry extraction from the UI.
+export async function retryExtractTrackFromUrl(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const track = await prisma.workflowTrack.findUnique({ where: { id } });
+    if (!track) return res.status(404).json({ error: 'Not found' });
+    if (!track.opportunityUrl) return res.status(400).json({ error: 'Track has no opportunityUrl' });
+    if (!assertClientAccess(req, track.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    extractTrackFromUrl(id, track.opportunityUrl).catch(err => {
+      console.error('[retryExtractTrackFromUrl] background failed:', err);
+    });
+    return res.json({ status: 'pending' });
+  } catch (err) {
+    console.error('[retryExtractTrackFromUrl]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 export async function updateTrack(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, description, fundingVehicle, status, sortOrder } = req.body;
+  const {
+    title, description, fundingVehicle, status, sortOrder,
+    opportunityUrl, solicitationNumber, vehicleType, proposalDueDate, fundingCeiling, objective,
+  } = req.body;
   try {
     const existing = await prisma.workflowTrack.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -374,6 +572,12 @@ export async function updateTrack(req: AuthRequest, res: Response) {
         ...(fundingVehicle !== undefined && { fundingVehicle }),
         ...(status !== undefined && { status }),
         ...(sortOrder !== undefined && { sortOrder }),
+        ...(opportunityUrl !== undefined && { opportunityUrl: opportunityUrl || null }),
+        ...(solicitationNumber !== undefined && { solicitationNumber: solicitationNumber || null }),
+        ...(vehicleType !== undefined && { vehicleType: vehicleType || null }),
+        ...(proposalDueDate !== undefined && { proposalDueDate: proposalDueDate ? new Date(proposalDueDate) : null }),
+        ...(fundingCeiling !== undefined && { fundingCeiling: fundingCeiling || null }),
+        ...(objective !== undefined && { objective: objective || null }),
       },
     });
 
