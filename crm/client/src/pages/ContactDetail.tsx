@@ -3,9 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Phone, Smartphone, Mail, Linkedin, ExternalLink, ArrowLeft, Edit2, Trash2,
-  MessageSquare, Target, CheckSquare, Sparkles, Plus, Copy
+  MessageSquare, Target, CheckSquare, Sparkles, Plus, Copy, Paperclip
 } from 'lucide-react';
-import { contactsApi, tasksApi } from '../api';
+import { contactsApi, tasksApi, interactionsApi } from '../api';
+import { InteractionAttachments } from '../components/InteractionAttachments';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { ContactModal } from '../components/ContactModal';
@@ -62,6 +63,8 @@ export function ContactDetail() {
   const [showLogInteraction, setShowLogInteraction] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteInteractionId, setConfirmDeleteInteractionId] = useState<string | null>(null);
+  const [expandedAttachments, setExpandedAttachments] = useState<Set<string>>(new Set());
 
   const { data: contact, isLoading, error } = useQuery<any>({
     queryKey: ['contact', id],
@@ -76,6 +79,17 @@ export function ContactDetail() {
       navigate('/contacts');
     },
     onError: () => toast.error('Failed to delete contact'),
+  });
+
+  const deleteInteraction = useMutation({
+    mutationFn: (iid: string) => interactionsApi.delete(iid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contact', id] });
+      qc.invalidateQueries({ queryKey: ['interactions'] });
+      setConfirmDeleteInteractionId(null);
+      toast.success('Interaction deleted');
+    },
+    onError: () => toast.error('Failed to delete interaction'),
   });
 
   const completeTask = useMutation({
@@ -286,41 +300,75 @@ export function ContactDetail() {
               <MessageSquare size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
               <p className="text-sm" style={{ color: '#8b949e' }}>No interactions logged yet.</p>
             </div>
-          ) : interactions.map((i: any) => (
-            <div key={i.id} className="card">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <InteractionTypeBadge type={i.type} />
-                    <span className="text-xs" style={{ color: '#8b949e' }}>{formatDate(i.date)}</span>
+          ) : interactions.map((i: any) => {
+            const attachCount = i._count?.attachments || 0;
+            const expanded = expandedAttachments.has(i.id);
+            const canEdit = user?.role !== 'Viewer';
+            return (
+              <div key={i.id} className="card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <InteractionTypeBadge type={i.type} />
+                      <span className="text-xs" style={{ color: '#8b949e' }}>{formatDate(i.date)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAttachments(prev => {
+                          const next = new Set(prev);
+                          if (next.has(i.id)) next.delete(i.id); else next.add(i.id);
+                          return next;
+                        })}
+                        className="text-xs flex items-center gap-1 hover:opacity-80"
+                        style={{ color: attachCount > 0 ? '#c9a84c' : '#8b949e' }}
+                        title="Attachments"
+                      >
+                        <Paperclip size={11} />
+                        {attachCount > 0 ? attachCount : (canEdit ? 'Add file' : '')}
+                      </button>
+                    </div>
+                    <div className="text-sm font-medium mb-2" style={{ color: '#e6edf3' }}>{i.subject}</div>
+                    {i.notes && (
+                      <p className="text-sm leading-relaxed" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>
+                        {i.notes.length > 300 ? i.notes.slice(0, 300) + '…' : i.notes}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3 mt-2">
+                      {i.entity && (
+                        <Link to={`/entities/${i.entity.id}`} className="flex items-center gap-1.5" style={{ textDecoration: 'none' }}>
+                          <EntityTypeBadge
+                            entityType={i.entity.entityType}
+                            chamber={i.entity.chamber}
+                            governmentType={i.entity.governmentType}
+                          />
+                          <span className="text-xs" style={{ color: '#8b949e' }}>{i.entity.name}</span>
+                        </Link>
+                      )}
+                      {i.initiative && (
+                        <Link to={`/initiatives/${i.initiative.id}`} className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+                          {i.initiative.title}
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm font-medium mb-2" style={{ color: '#e6edf3' }}>{i.subject}</div>
-                  {i.notes && (
-                    <p className="text-sm leading-relaxed" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>
-                      {i.notes.length > 300 ? i.notes.slice(0, 300) + '…' : i.notes}
-                    </p>
+                  {canEdit && (
+                    <button
+                      onClick={() => setConfirmDeleteInteractionId(i.id)}
+                      className="flex-shrink-0 hover:opacity-80"
+                      style={{ color: '#30363d' }}
+                      title="Delete interaction"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   )}
-                  <div className="flex items-center gap-3 mt-2">
-                    {i.entity && (
-                      <Link to={`/entities/${i.entity.id}`} className="flex items-center gap-1.5" style={{ textDecoration: 'none' }}>
-                        <EntityTypeBadge
-                          entityType={i.entity.entityType}
-                          chamber={i.entity.chamber}
-                          governmentType={i.entity.governmentType}
-                        />
-                        <span className="text-xs" style={{ color: '#8b949e' }}>{i.entity.name}</span>
-                      </Link>
-                    )}
-                    {i.initiative && (
-                      <Link to={`/initiatives/${i.initiative.id}`} className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>
-                        {i.initiative.title}
-                      </Link>
-                    )}
-                  </div>
                 </div>
+                {expanded && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #30363d' }}>
+                    <InteractionAttachments interactionId={i.id} canEdit={canEdit} />
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -452,6 +500,19 @@ export function ContactDetail() {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="btn-secondary">Cancel</button>
               <button onClick={() => deleteContact.mutate()} className="btn-danger">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteInteractionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div className="rounded-xl p-6 max-w-sm w-full" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
+            <h3 className="text-base font-semibold mb-2" style={{ color: '#e6edf3' }}>Delete Interaction?</h3>
+            <p className="text-sm mb-6" style={{ color: '#8b949e' }}>This will move the interaction (and any attachments) to the recycle bin.</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmDeleteInteractionId(null)} className="btn-secondary">Cancel</button>
+              <button onClick={() => deleteInteraction.mutate(confirmDeleteInteractionId)} className="btn-danger">Delete</button>
             </div>
           </div>
         </div>

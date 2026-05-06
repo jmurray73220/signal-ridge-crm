@@ -28,6 +28,13 @@ import {
   deleteInteraction,
 } from '../controllers/interactionsController';
 import {
+  uploadAttachmentJson,
+  listAttachments,
+  downloadAttachment,
+  getAttachmentText,
+  deleteAttachment,
+} from '../controllers/interactionAttachmentsController';
+import {
   getTasks,
   createTask,
   updateTask,
@@ -78,6 +85,15 @@ router.post('/interactions', createInteraction);
 router.get('/interactions/:id', getInteraction);
 router.put('/interactions/:id', updateInteraction);
 router.delete('/interactions/:id', deleteInteraction);
+
+// Interaction attachments — JSON-base64 upload (multipart from a script is awkward).
+// Bubba flow: POST /api/bot/interactions to create the interaction, then
+// POST /api/bot/interactions/:id/attachments with the transcript file.
+router.get('/interactions/:id/attachments', listAttachments);
+router.post('/interactions/:id/attachments', uploadAttachmentJson);
+router.get('/interactions/attachments/:attachmentId/download', downloadAttachment);
+router.get('/interactions/attachments/:attachmentId/text', getAttachmentText);
+router.delete('/interactions/attachments/:attachmentId', deleteAttachment);
 
 // Tasks
 router.get('/tasks', getTasks);

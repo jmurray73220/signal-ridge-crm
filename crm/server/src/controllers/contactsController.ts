@@ -110,6 +110,7 @@ export async function getContact(req: AuthRequest, res: Response) {
               include: {
                 entity: { select: { id: true, name: true, entityType: true } },
                 initiative: { select: { id: true, title: true } },
+                _count: { select: { attachments: true } },
               },
             },
           },
@@ -246,6 +247,7 @@ export async function getContactInteractions(req: AuthRequest, res: Response) {
             entity: { select: { id: true, name: true, entityType: true } },
             initiative: { select: { id: true, title: true } },
             contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
+            _count: { select: { attachments: true } },
           },
         },
       },

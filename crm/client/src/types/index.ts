@@ -121,6 +121,8 @@ export interface Interaction {
   initiativeId?: string;
   initiative?: { id: string; title: string };
   contacts: { contactId: string; contact: { id: string; firstName: string; lastName: string } }[];
+  attachments?: { id: string; filename: string; mimeType: string; source: string | null; uploadedAt: string; uploadedByUserId: string | null }[];
+  _count?: { attachments?: number };
   createdAt: string;
   updatedAt: string;
   createdBy?: { firstName: string; lastName: string };

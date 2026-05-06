@@ -244,11 +244,27 @@ model Interaction {
   createdBy       User?   @relation("InteractionCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy       User?   @relation("InteractionUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  contacts  InteractionContact[]
-  reminders Reminder[]
+  contacts    InteractionContact[]
+  reminders   Reminder[]
+  attachments InteractionAttachment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model InteractionAttachment {
+  id               String      @id @default(uuid())
+  interactionId    String
+  interaction      Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  filename         String
+  mimeType         String
+  fileData         String      // Base64-encoded original file (so it can be downloaded back)
+  extractedText    String      // Extracted text for search / AI use; empty for non-text formats
+  source           String?     // Free-form: "gemini" | "otter" | "manual" | "bubba" | etc.
+  uploadedAt       DateTime    @default(now())
+  uploadedByUserId String?
+
+  @@index([interactionId])
 }
 
 model InteractionContact {

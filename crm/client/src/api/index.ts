@@ -77,6 +77,33 @@ export const interactionsApi = {
   create: (data: any) => api.post<Interaction>('/api/interactions', data),
   update: (id: string, data: any) => api.put<Interaction>(`/api/interactions/${id}`, data),
   delete: (id: string) => api.delete(`/api/interactions/${id}`),
+  // Attachments
+  listAttachments: (id: string) =>
+    api.get<InteractionAttachment[]>(`/api/interactions/${id}/attachments`),
+  uploadAttachment: (id: string, file: File, source?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (source) fd.append('source', source);
+    return api.post<InteractionAttachment>(`/api/interactions/${id}/attachments`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deleteAttachment: (attachmentId: string) =>
+    api.delete(`/api/interactions/attachments/${attachmentId}`),
+  attachmentDownloadUrl: (attachmentId: string) =>
+    `/api/interactions/attachments/${attachmentId}/download`,
+};
+
+export type InteractionAttachment = {
+  id: string;
+  interactionId: string;
+  filename: string;
+  mimeType: string;
+  source: string | null;
+  uploadedAt: string;
+  uploadedByUserId: string | null;
+  sizeBytes?: number;
+  hasText?: boolean;
 };
 
 // Tasks

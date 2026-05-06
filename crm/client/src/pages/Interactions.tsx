@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Download, Filter, ExternalLink, MessageSquare, Trash2 } from 'lucide-react';
+import { Plus, Search, Download, Filter, ExternalLink, MessageSquare, Trash2, Paperclip } from 'lucide-react';
 import { interactionsApi, exportApi } from '../api';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { LogInteractionModal } from '../components/LogInteractionModal';
@@ -211,6 +211,11 @@ export function Interactions() {
                               <ExternalLink size={11} /> Gmail Thread
                             </a>
                           )}
+                          {(interaction._count?.attachments || 0) > 0 && (
+                            <span className="flex items-center gap-1 text-xs" style={{ color: '#c9a84c' }}>
+                              <Paperclip size={11} /> {interaction._count!.attachments}
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-sm font-medium mb-2" style={{ color: '#e6edf3' }}>{interaction.subject}</div>
@@ -256,7 +261,7 @@ export function Interactions() {
                         </div>
                       </div>
 
-                      {user?.role === 'Admin' && (
+                      {user?.role !== 'Viewer' && (
                         <button
                           onClick={() => setConfirmDeleteId(interaction.id)}
                           className="flex-shrink-0 hover:opacity-80 transition-opacity"

@@ -3,9 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Edit2, Trash2, MessageSquare, Target,
-  CheckSquare, Users, Sparkles, Plus, ExternalLink
+  CheckSquare, Users, Sparkles, Plus, ExternalLink, Paperclip
 } from 'lucide-react';
-import { entitiesApi, tasksApi, contactsApi, briefingDocsApi } from '../api';
+import { entitiesApi, tasksApi, contactsApi, briefingDocsApi, interactionsApi } from '../api';
+import { InteractionAttachments } from '../components/InteractionAttachments';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { EntityModal } from '../components/EntityModal';
@@ -47,6 +48,8 @@ export function EntityDetail() {
   const [showLogInteraction, setShowLogInteraction] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteInteractionId, setConfirmDeleteInteractionId] = useState<string | null>(null);
+  const [expandedAttachments, setExpandedAttachments] = useState<Set<string>>(new Set());
 
   const { data: entity, isLoading, error } = useQuery({
     queryKey: ['entity', id],
@@ -86,6 +89,17 @@ export function EntityDetail() {
       navigate(-1);
     },
     onError: () => toast.error('Failed to delete'),
+  });
+
+  const deleteInteraction = useMutation({
+    mutationFn: (iid: string) => interactionsApi.delete(iid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['entity', id] });
+      qc.invalidateQueries({ queryKey: ['interactions'] });
+      setConfirmDeleteInteractionId(null);
+      toast.success('Interaction deleted');
+    },
+    onError: () => toast.error('Failed to delete interaction'),
   });
 
   const completeTask = useMutation({
@@ -554,33 +568,69 @@ export function EntityDetail() {
           ) : (
             <div className="space-y-3">
               {interactions.map((i: unknown) => {
-                const interaction = i as { id: string; type: string; date: string; subject: string; notes?: string; gmailThreadUrl?: string; contacts?: Array<{ contactId: string; contact: { firstName: string; lastName: string } }>; initiative?: { id: string; title: string } };
+                const interaction = i as { id: string; type: string; date: string; subject: string; notes?: string; gmailThreadUrl?: string; contacts?: Array<{ contactId: string; contact: { firstName: string; lastName: string } }>; initiative?: { id: string; title: string }; _count?: { attachments?: number } };
+                const attachCount = interaction._count?.attachments || 0;
+                const expanded = expandedAttachments.has(interaction.id);
+                const canEdit = user?.role !== 'Viewer';
                 return (
                   <div key={interaction.id} className="card">
-                    <div className="flex items-center gap-2 mb-1">
-                      <InteractionTypeBadge type={interaction.type} />
-                      <span className="text-xs" style={{ color: '#8b949e' }}>{formatDate(interaction.date)}</span>
-                      {interaction.gmailThreadUrl && (
-                        <a href={interaction.gmailThreadUrl} target="_blank" rel="noopener noreferrer" className="text-xs flex items-center gap-1" style={{ color: '#c9a84c', textDecoration: 'none' }}>
-                          <ExternalLink size={11} /> Gmail
-                        </a>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <InteractionTypeBadge type={interaction.type} />
+                          <span className="text-xs" style={{ color: '#8b949e' }}>{formatDate(interaction.date)}</span>
+                          {interaction.gmailThreadUrl && (
+                            <a href={interaction.gmailThreadUrl} target="_blank" rel="noopener noreferrer" className="text-xs flex items-center gap-1" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+                              <ExternalLink size={11} /> Gmail
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedAttachments(prev => {
+                              const next = new Set(prev);
+                              if (next.has(interaction.id)) next.delete(interaction.id); else next.add(interaction.id);
+                              return next;
+                            })}
+                            className="text-xs flex items-center gap-1 hover:opacity-80"
+                            style={{ color: attachCount > 0 ? '#c9a84c' : '#8b949e' }}
+                            title="Attachments"
+                          >
+                            <Paperclip size={11} />
+                            {attachCount > 0 ? attachCount : (canEdit ? 'Add file' : '')}
+                          </button>
+                        </div>
+                        <div className="text-sm font-medium mb-2" style={{ color: '#e6edf3' }}>{interaction.subject}</div>
+                        {interaction.notes && <p className="text-sm" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>{interaction.notes.length > 300 ? interaction.notes.slice(0, 300) + '…' : interaction.notes}</p>}
+                        {interaction.contacts && interaction.contacts.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {interaction.contacts.map((ic) => (
+                              <Link key={ic.contactId} to={`/contacts/${ic.contactId}`} className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+                                {ic.contact.firstName} {ic.contact.lastName}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                        {interaction.initiative && (
+                          <Link to={`/initiatives/${interaction.initiative.id}`} className="text-xs mt-1 inline-block" style={{ color: '#8b949e', textDecoration: 'none' }}>
+                            → {interaction.initiative.title}
+                          </Link>
+                        )}
+                      </div>
+                      {canEdit && (
+                        <button
+                          onClick={() => setConfirmDeleteInteractionId(interaction.id)}
+                          className="flex-shrink-0 hover:opacity-80"
+                          style={{ color: '#30363d' }}
+                          title="Delete interaction"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       )}
                     </div>
-                    <div className="text-sm font-medium mb-2" style={{ color: '#e6edf3' }}>{interaction.subject}</div>
-                    {interaction.notes && <p className="text-sm" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>{interaction.notes.length > 300 ? interaction.notes.slice(0, 300) + '…' : interaction.notes}</p>}
-                    {interaction.contacts && interaction.contacts.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {interaction.contacts.map((ic) => (
-                          <Link key={ic.contactId} to={`/contacts/${ic.contactId}`} className="text-xs" style={{ color: '#c9a84c', textDecoration: 'none' }}>
-                            {ic.contact.firstName} {ic.contact.lastName}
-                          </Link>
-                        ))}
+                    {expanded && (
+                      <div className="mt-3 pt-3" style={{ borderTop: '1px solid #30363d' }}>
+                        <InteractionAttachments interactionId={interaction.id} canEdit={canEdit} />
                       </div>
-                    )}
-                    {interaction.initiative && (
-                      <Link to={`/initiatives/${interaction.initiative.id}`} className="text-xs mt-1 inline-block" style={{ color: '#8b949e', textDecoration: 'none' }}>
-                        → {interaction.initiative.title}
-                      </Link>
                     )}
                   </div>
                 );
@@ -692,6 +742,19 @@ export function EntityDetail() {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="btn-secondary">Cancel</button>
               <button onClick={() => deleteEntity.mutate()} className="btn-danger">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteInteractionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div className="rounded-xl p-6 max-w-sm w-full" style={{ background: '#1c2333', border: '1px solid #30363d' }}>
+            <h3 className="text-base font-semibold mb-2" style={{ color: '#e6edf3' }}>Delete Interaction?</h3>
+            <p className="text-sm mb-6" style={{ color: '#8b949e' }}>This will move the interaction (and any attachments) to the recycle bin.</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmDeleteInteractionId(null)} className="btn-secondary">Cancel</button>
+              <button onClick={() => deleteInteraction.mutate(confirmDeleteInteractionId)} className="btn-danger">Delete</button>
             </div>
           </div>
         </div>

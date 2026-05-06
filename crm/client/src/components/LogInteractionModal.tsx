@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Mail, ExternalLink, Loader2 } from 'lucide-react';
+import { X, Mail, ExternalLink, Loader2, Paperclip, Trash2 } from 'lucide-react';
 import { interactionsApi, contactsApi, entitiesApi, initiativesApi, gmailApi } from '../api';
 import toast from 'react-hot-toast';
 
@@ -32,6 +32,8 @@ export function LogInteractionModal({ defaultContactId, defaultEntityId, default
   const [gmailThreads, setGmailThreads] = useState<any[]>([]);
   const [gmailLoading, setGmailLoading] = useState(false);
   const [gmailError, setGmailError] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
@@ -137,18 +139,40 @@ export function LogInteractionModal({ defaultContactId, defaultEntityId, default
     }
     setLoading(true);
     try {
-      await interactionsApi.create({
+      const res = await interactionsApi.create({
         ...form,
         entityId: form.entityId || null,
         initiativeId: form.initiativeId || null,
         gmailThreadUrl: form.gmailThreadUrl || null,
       });
+      const interactionId = (res.data as any)?.id;
+      if (interactionId && files.length > 0) {
+        const failed: string[] = [];
+        for (const file of files) {
+          try {
+            await interactionsApi.uploadAttachment(interactionId, file);
+          } catch {
+            failed.push(file.name);
+          }
+        }
+        if (failed.length > 0) {
+          toast.error(`Failed to upload: ${failed.join(', ')}`);
+        }
+      }
       onSave();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to log interaction');
     } finally {
       setLoading(false);
     }
+  };
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return;
+    const next: File[] = [];
+    for (let i = 0; i < list.length; i++) next.push(list[i]);
+    setFiles(prev => [...prev, ...next]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -244,6 +268,50 @@ export function LogInteractionModal({ defaultContactId, defaultEntityId, default
           <div>
             <label className="label">Gmail Thread URL (optional)</label>
             <input type="url" className="input" value={form.gmailThreadUrl} onChange={set('gmailThreadUrl')} placeholder="https://mail.google.com/…" />
+          </div>
+
+          {/* Attachments — meeting transcripts, notes, etc. */}
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <Paperclip size={12} /> Attachments (meeting notes, transcripts…)
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.docx,.txt,.md,.vtt,.srt,.json"
+              className="hidden"
+              onChange={e => addFiles(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-secondary text-sm flex items-center gap-1.5"
+            >
+              <Paperclip size={14} /> Add file
+            </button>
+            {files.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {files.map((f, idx) => (
+                  <div
+                    key={`${f.name}-${idx}`}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded text-xs"
+                    style={{ background: '#0d1117', border: '1px solid #30363d' }}
+                  >
+                    <span className="flex-1 truncate" style={{ color: '#e6edf3' }}>{f.name}</span>
+                    <span style={{ color: '#6b7280' }}>{(f.size / 1024).toFixed(1)} KB</span>
+                    <button
+                      type="button"
+                      onClick={() => setFiles(prev => prev.filter((_, i) => i !== idx))}
+                      style={{ color: '#6b7280' }}
+                      title="Remove"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Gmail Import */}

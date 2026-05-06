@@ -27,6 +27,7 @@ export async function getInteractions(req: AuthRequest, res: Response) {
         initiative: { select: { id: true, title: true } },
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
         createdBy: { select: { firstName: true, lastName: true } },
+        _count: { select: { attachments: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -45,6 +46,17 @@ export async function getInteraction(req: AuthRequest, res: Response) {
         entity: true,
         initiative: { select: { id: true, title: true } },
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, title: true } } } },
+        attachments: {
+          select: {
+            id: true,
+            filename: true,
+            mimeType: true,
+            source: true,
+            uploadedAt: true,
+            uploadedByUserId: true,
+          },
+          orderBy: { uploadedAt: 'desc' },
+        },
         createdBy: { select: { firstName: true, lastName: true } },
         updatedBy: { select: { firstName: true, lastName: true } },
       },

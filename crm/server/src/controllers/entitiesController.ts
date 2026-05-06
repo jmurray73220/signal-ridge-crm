@@ -72,13 +72,6 @@ export async function getEntity(req: AuthRequest, res: Response) {
             },
           },
         },
-        interactions: {
-          include: {
-            contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
-            initiative: { select: { id: true, title: true } },
-          },
-          orderBy: { date: 'desc' },
-        },
         tasks: {
           include: {
             contact: { select: { id: true, firstName: true, lastName: true } },
@@ -92,7 +85,28 @@ export async function getEntity(req: AuthRequest, res: Response) {
     });
 
     if (!entity) return res.status(404).json({ error: 'Entity not found' });
-    return res.json(parseEntityArrayFields(entity));
+
+    // Roll-up interactions: include both interactions where this entity is
+    // tagged directly, AND interactions tagged only with a staffer (contact)
+    // who works for this entity. So a meeting note logged against a
+    // congressional staffer surfaces on the office's page automatically.
+    const interactions = await prisma.interaction.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { entityId: id },
+          { contacts: { some: { contact: { entityId: id } } } },
+        ],
+      },
+      include: {
+        contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
+        initiative: { select: { id: true, title: true } },
+        _count: { select: { attachments: true } },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    return res.json({ ...parseEntityArrayFields(entity), interactions });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }
@@ -288,10 +302,17 @@ export async function getEntityInteractions(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
     const interactions = await prisma.interaction.findMany({
-      where: { entityId: id },
+      where: {
+        deletedAt: null,
+        OR: [
+          { entityId: id },
+          { contacts: { some: { contact: { entityId: id } } } },
+        ],
+      },
       include: {
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
         initiative: { select: { id: true, title: true } },
+        _count: { select: { attachments: true } },
       },
       orderBy: { date: 'desc' },
     });
