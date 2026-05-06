@@ -1045,9 +1045,31 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
     }
   }
 
+  async function confirmTargets() {
+    try {
+      await updateTrack(track.id, { focusAreasConfirmedAt: 'now' });
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch {
+      toast.error('Failed to confirm');
+    }
+  }
+
+  async function editTargets() {
+    try {
+      await updateTrack(track.id, { focusAreasConfirmedAt: null });
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch {
+      toast.error('Failed to re-open selection');
+    }
+  }
+
   const showFallback = isAdmin && (status === 'blocked' || status === 'failed' || status === 'partial');
   const focusAreas = track.focusAreas || [];
   const targeted = track.targetedFocusAreas || [];
+  const isConfirmed = !!track.focusAreasConfirmedAt;
+  const visibleFocusAreas = isConfirmed
+    ? focusAreas.filter(fa => targeted.includes(fa.name))
+    : focusAreas;
   const pocs = track.pointsOfContact || [];
   const sections = track.additionalSections || [];
 
@@ -1120,29 +1142,56 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
 
       {focusAreas.length > 0 && (
         <div className="mt-4">
-          <div className="text-xs text-text-muted uppercase tracking-wider mb-2">
-            Focus Areas — check the ones you're targeting
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-text-muted uppercase tracking-wider">
+              {isConfirmed
+                ? `Targeted Focus Areas (${visibleFocusAreas.length})`
+                : `Focus Areas — check the ones you're targeting`}
+            </div>
+            {isAdmin && (
+              isConfirmed ? (
+                <button
+                  type="button"
+                  onClick={editTargets}
+                  className="text-xs text-accent hover:opacity-80"
+                >
+                  Edit targets
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={confirmTargets}
+                  className="btn-primary text-xs"
+                  disabled={targeted.length === 0}
+                  title={targeted.length === 0 ? 'Pick at least one focus area first' : 'Hide non-targeted areas'}
+                >
+                  Confirm targets
+                </button>
+              )
+            )}
           </div>
           <div className="space-y-2">
-            {focusAreas.map((fa, i) => {
+            {visibleFocusAreas.map((fa, i) => {
               const isPicked = targeted.includes(fa.name);
               return (
                 <label
                   key={`${fa.name}-${i}`}
-                  className="flex items-start gap-2 p-2.5 rounded cursor-pointer transition-colors"
+                  className={`flex items-start gap-2 p-2.5 rounded transition-colors ${isConfirmed ? '' : 'cursor-pointer'}`}
                   style={{
                     background: isPicked ? 'rgba(201,168,76,0.1)' : '#0d1117',
                     border: `1px solid ${isPicked ? '#c9a84c' : '#24375a'}`,
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isPicked}
-                    onChange={() => toggleFocusArea(fa.name)}
-                    className="mt-1"
-                    style={{ accentColor: '#c9a84c' }}
-                    disabled={!isAdmin}
-                  />
+                  {!isConfirmed && (
+                    <input
+                      type="checkbox"
+                      checked={isPicked}
+                      onChange={() => toggleFocusArea(fa.name)}
+                      className="mt-1"
+                      style={{ accentColor: '#c9a84c' }}
+                      disabled={!isAdmin}
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-text-primary">{fa.name}</div>
                     {fa.summary && (
@@ -1153,6 +1202,12 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
               );
             })}
           </div>
+          {isConfirmed && focusAreas.length > visibleFocusAreas.length && (
+            <p className="text-xs text-text-muted italic mt-2">
+              {focusAreas.length - visibleFocusAreas.length} non-targeted area
+              {focusAreas.length - visibleFocusAreas.length === 1 ? '' : 's'} hidden — click "Edit targets" to bring them back.
+            </p>
+          )}
         </div>
       )}
 

@@ -523,6 +523,7 @@ model WorkflowTrack {
   objective             String?
   focusAreas            String    @default("[]") // JSON: [{name, summary}]
   targetedFocusAreas    String    @default("[]") // JSON array of names the user picked as in-scope
+  focusAreasConfirmedAt DateTime? // null = user hasn't yet picked. set = user confirmed; UI hides non-targeted areas.
   pointsOfContact       String    @default("[]") // JSON: [{name, role, email}]
   additionalSections    String    @default("[]") // JSON: [{heading, content}] — catch-all
   aiExtractionStatus    String?   // pending | ok | partial | blocked | failed

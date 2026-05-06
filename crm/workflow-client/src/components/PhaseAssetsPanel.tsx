@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Link as LinkIcon, Trash2, Upload, Plus, Loader2, FileText, ExternalLink } from 'lucide-react';
+import {
+  Paperclip, Link as LinkIcon, Trash2, Upload, Plus, Loader2,
+  ChevronDown, ChevronRight, ExternalLink,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   api,
@@ -32,17 +35,27 @@ function hostname(url: string): string {
 }
 
 export function PhaseAssetsPanel({ phaseId, trackId, attachments, links, canEdit }: Props) {
+  if (attachments.length === 0 && links.length === 0 && !canEdit) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <FilesRow phaseId={phaseId} trackId={trackId} attachments={attachments} canEdit={canEdit} />
+      <LinksRow phaseId={phaseId} trackId={trackId} links={links} canEdit={canEdit} />
+    </div>
+  );
+}
+
+// ─── Files row ───────────────────────────────────────────────────────────────
+
+function FilesRow({
+  phaseId, trackId, attachments, canEdit,
+}: { phaseId: string; trackId: string; attachments: PhaseAttachment[]; canEdit: boolean }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkLabel, setLinkLabel] = useState('');
-  const [savingLink, setSavingLink] = useState(false);
 
-  function refresh() {
-    qc.invalidateQueries({ queryKey: ['track', trackId] });
-  }
+  const refresh = () => qc.invalidateQueries({ queryKey: ['track', trackId] });
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -51,7 +64,7 @@ export function PhaseAssetsPanel({ phaseId, trackId, attachments, links, canEdit
     try {
       await uploadPhaseAttachment(phaseId, file);
       refresh();
-      toast.success('File attached');
+      setOpen(true);
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Upload failed');
     } finally {
@@ -76,7 +89,7 @@ export function PhaseAssetsPanel({ phaseId, trackId, attachments, links, canEdit
     }
   }
 
-  async function removeAttachment(id: string) {
+  async function remove(id: string) {
     try {
       await deletePhaseAttachment(id);
       refresh();
@@ -85,24 +98,102 @@ export function PhaseAssetsPanel({ phaseId, trackId, attachments, links, canEdit
     }
   }
 
-  async function saveLink() {
+  const empty = attachments.length === 0;
+  if (empty && !canEdit) return null;
+
+  return (
+    <div className="rounded text-xs" style={{ background: '#0d1117', border: '1px solid #24375a' }}>
+      <div className="flex items-center gap-1 px-2 py-1">
+        <button
+          type="button"
+          onClick={() => !empty && setOpen(o => !o)}
+          className={`flex items-center gap-1 ${empty ? 'cursor-default' : 'hover:text-accent'}`}
+          style={{ color: empty ? '#6b7280' : '#8b949e' }}
+        >
+          {!empty && (open ? <ChevronDown size={11} /> : <ChevronRight size={11} />)}
+          <Paperclip size={11} />
+          <span>{attachments.length} file{attachments.length === 1 ? '' : 's'}</span>
+        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="ml-1 hover:text-accent flex items-center"
+            style={{ color: '#c9a84c' }}
+            title="Upload file"
+          >
+            {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+          </button>
+        )}
+        <input ref={fileRef} type="file" className="hidden" onChange={onPickFile} />
+      </div>
+
+      {open && !empty && (
+        <div className="px-2 pb-1.5 space-y-1" style={{ borderTop: '1px solid #24375a' }}>
+          {attachments.map(att => (
+            <div key={att.id} className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => download(att)}
+                className="flex-1 text-left truncate text-text-primary hover:text-accent"
+                title={att.filename}
+              >
+                {att.filename}
+              </button>
+              {att.sizeBytes !== undefined && (
+                <span className="text-text-muted">{formatSize(att.sizeBytes)}</span>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => remove(att.id)}
+                  className="text-text-muted hover:text-status-red"
+                  title="Delete"
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Links row ───────────────────────────────────────────────────────────────
+
+function LinksRow({
+  phaseId, trackId, links, canEdit,
+}: { phaseId: string; trackId: string; links: PhaseLink[]; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkLabel, setLinkLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['track', trackId] });
+
+  async function save() {
     if (!linkUrl.trim()) return;
-    setSavingLink(true);
+    setSaving(true);
     try {
       await createPhaseLink(phaseId, { url: linkUrl.trim(), label: linkLabel.trim() || undefined });
       setLinkUrl('');
       setLinkLabel('');
-      setLinkOpen(false);
+      setAdding(false);
+      setOpen(true);
       refresh();
-      toast.success('Link added');
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed');
     } finally {
-      setSavingLink(false);
+      setSaving(false);
     }
   }
 
-  async function removeLink(id: string) {
+  async function remove(id: string) {
     try {
       await deletePhaseLink(id);
       refresh();
@@ -111,148 +202,104 @@ export function PhaseAssetsPanel({ phaseId, trackId, attachments, links, canEdit
     }
   }
 
-  if (attachments.length === 0 && links.length === 0 && !canEdit) return null;
+  const empty = links.length === 0;
+  if (empty && !canEdit) return null;
 
   return (
-    <div className="mt-3 rounded p-3" style={{ background: '#0d1117', border: '1px solid #24375a' }}>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
-              <Paperclip size={12} /> Files {attachments.length > 0 && `(${attachments.length})`}
-            </div>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="text-xs flex items-center gap-1 text-accent hover:opacity-80"
-              >
-                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                {uploading ? 'Uploading' : 'Add'}
-              </button>
-            )}
-            <input ref={fileRef} type="file" className="hidden" onChange={onPickFile} />
-          </div>
-          {attachments.length === 0 ? (
-            <p className="text-xs italic text-text-muted">None</p>
-          ) : (
-            <div className="space-y-1">
-              {attachments.map(att => (
-                <div key={att.id} className="flex items-center gap-2 text-xs">
-                  <FileText size={12} className="text-text-muted shrink-0" />
-                  <button
-                    type="button"
-                    onClick={() => download(att)}
-                    className="flex-1 text-left truncate text-text-primary hover:text-accent"
-                    title={att.filename}
-                  >
-                    {att.filename}
-                  </button>
-                  {att.sizeBytes !== undefined && (
-                    <span className="text-text-muted">{formatSize(att.sizeBytes)}</span>
-                  )}
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(att.id)}
-                      className="text-text-muted hover:text-status-red"
-                      title="Delete"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+    <div className="rounded text-xs" style={{ background: '#0d1117', border: '1px solid #24375a' }}>
+      <div className="flex items-center gap-1 px-2 py-1">
+        <button
+          type="button"
+          onClick={() => !empty && setOpen(o => !o)}
+          className={`flex items-center gap-1 ${empty ? 'cursor-default' : 'hover:text-accent'}`}
+          style={{ color: empty ? '#6b7280' : '#8b949e' }}
+        >
+          {!empty && (open ? <ChevronDown size={11} /> : <ChevronRight size={11} />)}
+          <LinkIcon size={11} />
+          <span>{links.length} link{links.length === 1 ? '' : 's'}</span>
+        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => { setAdding(a => !a); setOpen(true); }}
+            className="ml-1 hover:text-accent flex items-center"
+            style={{ color: '#c9a84c' }}
+            title="Add link"
+          >
+            <Plus size={11} />
+          </button>
+        )}
+      </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
-              <LinkIcon size={12} /> Links {links.length > 0 && `(${links.length})`}
-            </div>
-            {canEdit && !linkOpen && (
-              <button
-                type="button"
-                onClick={() => setLinkOpen(true)}
-                className="text-xs flex items-center gap-1 text-accent hover:opacity-80"
-              >
-                <Plus size={12} /> Add
-              </button>
-            )}
-          </div>
-
-          {linkOpen && (
-            <div className="space-y-1.5 mb-2">
+      {(open || adding) && (
+        <div className="px-2 pb-1.5 space-y-1" style={{ borderTop: '1px solid #24375a' }}>
+          {adding && (
+            <div className="space-y-1 pt-1.5">
               <input
                 className="input text-xs"
                 value={linkUrl}
                 onChange={e => setLinkUrl(e.target.value)}
                 placeholder="https://…"
-                disabled={savingLink}
+                disabled={saving}
+                autoFocus
+                style={{ padding: '4px 6px' }}
               />
               <input
                 className="input text-xs"
                 value={linkLabel}
                 onChange={e => setLinkLabel(e.target.value)}
                 placeholder="Label (optional)"
-                disabled={savingLink}
+                disabled={saving}
+                style={{ padding: '4px 6px' }}
               />
               <div className="flex gap-1.5 justify-end">
                 <button
                   type="button"
+                  onClick={() => { setAdding(false); setLinkUrl(''); setLinkLabel(''); }}
                   className="btn-secondary text-xs"
-                  onClick={() => { setLinkOpen(false); setLinkUrl(''); setLinkLabel(''); }}
-                  disabled={savingLink}
+                  disabled={saving}
+                  style={{ padding: '2px 8px' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  onClick={save}
                   className="btn-primary text-xs"
-                  onClick={saveLink}
-                  disabled={savingLink || !linkUrl.trim()}
+                  disabled={saving || !linkUrl.trim()}
+                  style={{ padding: '2px 8px' }}
                 >
-                  {savingLink ? '…' : 'Save'}
+                  {saving ? '…' : 'Save'}
                 </button>
               </div>
             </div>
           )}
-
-          {links.length === 0 ? (
-            <p className="text-xs italic text-text-muted">None</p>
-          ) : (
-            <div className="space-y-1">
-              {links.map(link => (
-                <div key={link.id} className="flex items-center gap-2 text-xs">
-                  <ExternalLink size={12} className="text-text-muted shrink-0" />
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 truncate text-accent hover:opacity-80"
-                    title={link.url}
-                  >
-                    {link.label || hostname(link.url)}
-                  </a>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => removeLink(link.id)}
-                      className="text-text-muted hover:text-status-red"
-                      title="Delete"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              ))}
+          {!empty && open && links.map(link => (
+            <div key={link.id} className="flex items-center gap-2 pt-1">
+              <ExternalLink size={11} className="text-text-muted shrink-0" />
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 truncate text-accent hover:opacity-80"
+                title={link.url}
+              >
+                {link.label || hostname(link.url)}
+              </a>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => remove(link.id)}
+                  className="text-text-muted hover:text-status-red"
+                  title="Delete"
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
             </div>
-          )}
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

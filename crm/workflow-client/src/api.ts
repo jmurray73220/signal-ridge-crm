@@ -55,8 +55,23 @@ export async function createTrack(body: {
   sortOrder?: number;
   isContractOpportunity?: boolean;
   opportunityUrl?: string;
+  extractedFields?: Record<string, unknown>;
 }) {
   const { data } = await api.post('/api/workflow/tracks', body);
+  return data;
+}
+
+// Synchronous "fetch + extract" used by the create flow. Returns the
+// structured fields without creating a track. Caller passes the fields back
+// to createTrack to persist.
+export async function extractPreview(body: { url?: string; text?: string }): Promise<{
+  ok: boolean;
+  reason?: string;
+  status?: number;
+  sourceUrl?: string;
+  fields?: Record<string, any>;
+}> {
+  const { data } = await api.post('/api/workflow/tracks/extract-preview', body);
   return data;
 }
 

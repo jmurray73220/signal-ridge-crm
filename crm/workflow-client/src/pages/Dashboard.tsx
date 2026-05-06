@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import {
   listTracks,
   createTrack,
-  extractTrackFromText,
   listOrphanInitiatives,
   promoteInitiativeToTrack,
   type OrphanInitiative,
@@ -65,29 +64,19 @@ export function Dashboard() {
     title: string;
     isContractOpportunity: boolean;
     opportunityUrl?: string;
-    pastedText?: string;
+    extractedFields?: Record<string, any>;
   }) {
     if (!selectedClientId) return;
     setCreating(true);
     try {
-      const track = await createTrack({
+      await createTrack({
         workflowClientId: selectedClientId,
         title: data.title,
         isContractOpportunity: data.isContractOpportunity,
         opportunityUrl: data.opportunityUrl,
+        extractedFields: data.extractedFields,
       });
-      // If the user opted into the paste fallback, run extraction over their
-      // pasted text (skip the server URL fetch — we already know it's blocked).
-      if (data.pastedText && track?.id) {
-        await extractTrackFromText(track.id, data.pastedText).catch(() => undefined);
-      }
-      toast.success(
-        data.pastedText
-          ? 'Track created — Claude is reading the pasted text'
-          : data.isContractOpportunity && data.opportunityUrl
-          ? 'Track created — Claude is reading the URL'
-          : 'Track created'
-      );
+      toast.success('Track created');
       qc.invalidateQueries({ queryKey: ['tracks', selectedClientId] });
       setNewTrackOpen(false);
     } catch (err: any) {

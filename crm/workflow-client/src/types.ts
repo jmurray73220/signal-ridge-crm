@@ -112,6 +112,7 @@ export interface WorkflowTrack {
   objective?: string | null;
   focusAreas?: FocusArea[];
   targetedFocusAreas?: string[];
+  focusAreasConfirmedAt?: string | null;
   pointsOfContact?: PointOfContact[];
   additionalSections?: AdditionalSection[];
   aiExtractionStatus?: 'pending' | 'ok' | 'partial' | 'blocked' | 'failed' | null;

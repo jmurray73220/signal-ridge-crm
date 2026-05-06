@@ -43,6 +43,7 @@ router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
 router.post('/tracks', requireWorkflowAdmin, ctl.createTrack);
 router.post('/tracks/probe-url', requireWorkflowAdmin, ctl.probeOpportunityUrl);
+router.post('/tracks/extract-preview', requireWorkflowAdmin, ctl.extractPreview);
 router.post('/tracks/:id/extract-from-url', requireWorkflowAdmin, ctl.retryExtractTrackFromUrl);
 router.post('/tracks/:id/extract-from-text', requireWorkflowAdmin, ctl.extractTrackFromText);
 router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);

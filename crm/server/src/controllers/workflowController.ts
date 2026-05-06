@@ -360,26 +360,57 @@ export async function createTrack(req: AuthRequest, res: Response) {
   const {
     workflowClientId, title, description, fundingVehicle, status, sortOrder,
     isContractOpportunity, opportunityUrl,
+    // Pre-extracted opportunity fields. When supplied, the track is created
+    // with these baked in and no background extraction runs. The new
+    // create-flow always provides these (extracted via /extract-preview).
+    extractedFields,
   } = req.body;
   if (!workflowClientId || !title) return res.status(400).json({ error: 'workflowClientId and title required' });
   try {
     const isOpp = Boolean(isContractOpportunity);
-    const track = await prisma.workflowTrack.create({
-      data: {
-        workflowClientId,
-        title,
-        description: description || null,
-        fundingVehicle: fundingVehicle || null,
-        status: status || 'Active',
-        sortOrder: sortOrder ?? 0,
-        isContractOpportunity: isOpp,
-        opportunityUrl: isOpp && opportunityUrl ? String(opportunityUrl).trim() : null,
-        aiExtractionStatus: isOpp && opportunityUrl ? 'pending' : null,
-      },
-    });
+    const baseData: any = {
+      workflowClientId,
+      title,
+      description: description || null,
+      fundingVehicle: fundingVehicle || null,
+      status: status || 'Active',
+      sortOrder: sortOrder ?? 0,
+      isContractOpportunity: isOpp,
+      opportunityUrl: isOpp && opportunityUrl ? String(opportunityUrl).trim() : null,
+    };
 
-    // Auto-seed proposal-cycle phases for opportunity tracks. They're free to
-    // delete, rename, reorder, or add their own.
+    if (isOpp && extractedFields && typeof extractedFields === 'object') {
+      const f = extractedFields as any;
+      if (f.title && typeof f.title === 'string') baseData.title = f.title;
+      if (f.solicitationNumber) baseData.solicitationNumber = String(f.solicitationNumber);
+      if (f.vehicleType && VEHICLE_TYPES.includes(f.vehicleType)) baseData.vehicleType = f.vehicleType;
+      if (f.issuingAgency) baseData.issuingAgency = String(f.issuingAgency);
+      if (f.fundingAuthority) baseData.fundingAuthority = String(f.fundingAuthority);
+      if (f.questionsDueDate) {
+        const d = new Date(f.questionsDueDate);
+        if (!isNaN(d.getTime())) baseData.questionsDueDate = d;
+      }
+      if (f.proposalDueDate) {
+        const d = new Date(f.proposalDueDate);
+        if (!isNaN(d.getTime())) baseData.proposalDueDate = d;
+      }
+      if (f.periodOfPerformance) baseData.periodOfPerformance = String(f.periodOfPerformance);
+      if (f.fundingFloor) baseData.fundingFloor = String(f.fundingFloor);
+      if (f.fundingCeiling) baseData.fundingCeiling = String(f.fundingCeiling);
+      if (f.eligibility) baseData.eligibility = String(f.eligibility);
+      if (f.submissionFormat) baseData.submissionFormat = String(f.submissionFormat);
+      if (f.objective) baseData.objective = String(f.objective);
+      baseData.focusAreas = JSON.stringify(Array.isArray(f.focusAreas) ? f.focusAreas : []);
+      baseData.pointsOfContact = JSON.stringify(Array.isArray(f.pointsOfContact) ? f.pointsOfContact : []);
+      baseData.additionalSections = JSON.stringify(Array.isArray(f.additionalSections) ? f.additionalSections : []);
+      baseData.aiExtractionStatus = f.status || 'ok';
+      baseData.aiExtractedAt = new Date();
+    } else if (isOpp && opportunityUrl) {
+      baseData.aiExtractionStatus = 'pending';
+    }
+
+    const track = await prisma.workflowTrack.create({ data: baseData });
+
     if (isOpp) {
       await prisma.workflowPhase.createMany({
         data: OPPORTUNITY_PHASES.map((p, i) => ({
@@ -392,7 +423,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
       });
     }
 
-    // Mirror into CRM Initiative
+    // Mirror into CRM Initiative.
     try {
       const initiativeId = await upsertMirrorInitiative({
         track: { ...track, initiativeId: null },
@@ -406,12 +437,12 @@ export async function createTrack(req: AuthRequest, res: Response) {
       (track as any).initiativeId = initiativeId;
     } catch (mirrorErr) {
       console.error('[createTrack] initiative mirror failed:', mirrorErr);
-      // Non-fatal — track still exists
+      // Non-fatal — track still exists.
     }
 
-    // Kick off Claude extraction in the background if we have a URL. Track
-    // status surfaces in the UI so the user knows fields are populating.
-    if (isOpp && opportunityUrl) {
+    // Background extraction only if no pre-extracted fields were supplied.
+    // The new flow always supplies them, so this is the legacy path.
+    if (isOpp && opportunityUrl && !extractedFields) {
       extractTrackFromUrl(track.id, String(opportunityUrl).trim()).catch(err => {
         console.error('[createTrack] background extraction failed:', err);
       });
@@ -497,9 +528,34 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
   await runOpportunityExtraction(trackId, pageText);
 }
 
-// Opus-driven structured-output extraction. Used by both URL and pasted-text
-// flows. Updates aiExtractionStatus + the structured fields it can fill.
-async function runOpportunityExtraction(trackId: string, pageText: string): Promise<void> {
+// Pure extraction — runs Opus over a chunk of opportunity-page text and
+// returns the structured fields. Does NOT touch the database. Used by both
+// the synchronous create flow (preview-then-create) and the in-place
+// "re-extract" flow on existing tracks.
+export interface ExtractedOpportunityFields {
+  title?: string;
+  solicitationNumber?: string;
+  vehicleType?: string;
+  issuingAgency?: string;
+  fundingAuthority?: string;
+  questionsDueDate?: Date;
+  proposalDueDate?: Date;
+  periodOfPerformance?: string;
+  fundingFloor?: string;
+  fundingCeiling?: string;
+  eligibility?: string;
+  submissionFormat?: string;
+  objective?: string;
+  focusAreas: { name: string; summary?: string }[];
+  pointsOfContact: { name?: string; role?: string; email?: string | null }[];
+  additionalSections: { heading: string; content: string }[];
+  status: 'ok' | 'partial' | 'failed';
+}
+
+async function extractFieldsFromText(pageText: string): Promise<ExtractedOpportunityFields> {
+  const empty: ExtractedOpportunityFields = {
+    focusAreas: [], pointsOfContact: [], additionalSections: [], status: 'failed',
+  };
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const sys = `You extract opportunity details from a US-government contract solicitation, BAA, OTA, SBIR/STTR topic, or RFP.
@@ -528,15 +584,9 @@ Rules:
   "eligibility": "string — eligibility/qualification terms quoted from the source, or null",
   "submissionFormat": "string — submission process and required volumes/format, or null",
   "objective": "string — 4-7 sentence detailed summary",
-  "focusAreas": [
-    { "name": "string — focus area title as written", "summary": "string — 2-4 sentence technical summary with specifics" }
-  ],
-  "pointsOfContact": [
-    { "name": "string", "role": "string (e.g. Contracting Officer, Technical POC)", "email": "string or null" }
-  ],
-  "additionalSections": [
-    { "heading": "string — a short title for the section", "content": "string — 1-3 sentence summary" }
-  ]
+  "focusAreas": [{ "name": "string — focus area title as written", "summary": "string — 2-4 sentence technical summary with specifics" }],
+  "pointsOfContact": [{ "name": "string", "role": "string (e.g. Contracting Officer, Technical POC)", "email": "string or null" }],
+  "additionalSections": [{ "heading": "string — a short title for the section", "content": "string — 1-3 sentence summary" }]
 }
 
 Source page text:
@@ -553,74 +603,162 @@ ${pageText.slice(0, 80_000)}`;
       .filter(b => b.type === 'text')
       .map(b => (b as any).text)
       .join('\n');
-    console.log(`[runOpportunityExtraction] track=${trackId} model returned ${text.length} chars`);
+    console.log(`[extractFieldsFromText] model returned ${text.length} chars`);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn(`[runOpportunityExtraction] track=${trackId} no JSON found in response`);
-      await prisma.workflowTrack.update({
-        where: { id: trackId },
-        data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
-      });
-      return;
+      console.warn('[extractFieldsFromText] no JSON found in response');
+      return empty;
     }
     let parsed: any;
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
-      console.warn(`[runOpportunityExtraction] track=${trackId} JSON parse failed:`, parseErr);
-      await prisma.workflowTrack.update({
-        where: { id: trackId },
-        data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
-      });
-      return;
+      console.warn('[extractFieldsFromText] JSON parse failed:', parseErr);
+      return empty;
     }
-    console.log(`[runOpportunityExtraction] track=${trackId} parsed keys:`, Object.keys(parsed).join(','));
 
-    const data: any = {
-      aiExtractionStatus: 'ok',
-      aiExtractedAt: new Date(),
+    const out: ExtractedOpportunityFields = {
+      focusAreas: [], pointsOfContact: [], additionalSections: [], status: 'ok',
     };
-    if (parsed.title && typeof parsed.title === 'string') data.title = parsed.title;
-    if (parsed.solicitationNumber) data.solicitationNumber = String(parsed.solicitationNumber);
-    if (parsed.vehicleType && VEHICLE_TYPES.includes(parsed.vehicleType)) data.vehicleType = parsed.vehicleType;
-    if (parsed.issuingAgency) data.issuingAgency = String(parsed.issuingAgency);
-    if (parsed.fundingAuthority) data.fundingAuthority = String(parsed.fundingAuthority);
+    if (parsed.title && typeof parsed.title === 'string') out.title = parsed.title;
+    if (parsed.solicitationNumber) out.solicitationNumber = String(parsed.solicitationNumber);
+    if (parsed.vehicleType && VEHICLE_TYPES.includes(parsed.vehicleType)) out.vehicleType = parsed.vehicleType;
+    if (parsed.issuingAgency) out.issuingAgency = String(parsed.issuingAgency);
+    if (parsed.fundingAuthority) out.fundingAuthority = String(parsed.fundingAuthority);
     if (parsed.questionsDueDate) {
       const d = new Date(parsed.questionsDueDate);
-      if (!isNaN(d.getTime())) data.questionsDueDate = d;
+      if (!isNaN(d.getTime())) out.questionsDueDate = d;
     }
     if (parsed.proposalDueDate) {
       const d = new Date(parsed.proposalDueDate);
-      if (!isNaN(d.getTime())) data.proposalDueDate = d;
+      if (!isNaN(d.getTime())) out.proposalDueDate = d;
     }
-    if (parsed.periodOfPerformance) data.periodOfPerformance = String(parsed.periodOfPerformance);
-    if (parsed.fundingFloor) data.fundingFloor = String(parsed.fundingFloor);
-    if (parsed.fundingCeiling) data.fundingCeiling = String(parsed.fundingCeiling);
-    if (parsed.eligibility) data.eligibility = String(parsed.eligibility);
-    if (parsed.submissionFormat) data.submissionFormat = String(parsed.submissionFormat);
-    if (parsed.objective) data.objective = String(parsed.objective);
+    if (parsed.periodOfPerformance) out.periodOfPerformance = String(parsed.periodOfPerformance);
+    if (parsed.fundingFloor) out.fundingFloor = String(parsed.fundingFloor);
+    if (parsed.fundingCeiling) out.fundingCeiling = String(parsed.fundingCeiling);
+    if (parsed.eligibility) out.eligibility = String(parsed.eligibility);
+    if (parsed.submissionFormat) out.submissionFormat = String(parsed.submissionFormat);
+    if (parsed.objective) out.objective = String(parsed.objective);
+    if (Array.isArray(parsed.focusAreas)) out.focusAreas = parsed.focusAreas;
+    if (Array.isArray(parsed.pointsOfContact)) out.pointsOfContact = parsed.pointsOfContact;
+    if (Array.isArray(parsed.additionalSections)) out.additionalSections = parsed.additionalSections;
 
-    // JSON arrays — store as strings, default to empty array string.
-    data.focusAreas = JSON.stringify(Array.isArray(parsed.focusAreas) ? parsed.focusAreas : []);
-    data.pointsOfContact = JSON.stringify(Array.isArray(parsed.pointsOfContact) ? parsed.pointsOfContact : []);
-    data.additionalSections = JSON.stringify(Array.isArray(parsed.additionalSections) ? parsed.additionalSections : []);
+    const basicFilled = [out.solicitationNumber, out.vehicleType, out.proposalDueDate, out.objective].filter(Boolean).length;
+    if (basicFilled === 0 && out.focusAreas.length === 0) out.status = 'partial';
 
-    // Mark partial if Claude couldn't fill at least the basics.
-    const basicFilled = ['solicitationNumber', 'vehicleType', 'proposalDueDate', 'objective'].filter(k => data[k]).length;
-    const focusCount = Array.isArray(parsed.focusAreas) ? parsed.focusAreas.length : 0;
-    if (basicFilled === 0 && focusCount === 0) data.aiExtractionStatus = 'partial';
-
-    await prisma.workflowTrack.update({
-      where: { id: trackId },
-      data,
-    });
+    return out;
   } catch (err) {
-    console.error('[runOpportunityExtraction] Claude call failed:', err);
-    await prisma.workflowTrack.update({
-      where: { id: trackId },
-      data: { aiExtractionStatus: 'failed', aiExtractedAt: new Date() },
-    }).catch(() => undefined);
+    console.error('[extractFieldsFromText] Claude call failed:', err);
+    return empty;
   }
+}
+
+// Helper for the legacy in-place extraction path (re-extract button + retry)
+// — runs extraction and writes the result back to the existing track. New
+// create flows should use extractFieldsFromText() directly and pass the
+// fields to createTrack instead.
+async function runOpportunityExtraction(trackId: string, pageText: string): Promise<void> {
+  const fields = await extractFieldsFromText(pageText);
+  const data: any = {
+    aiExtractionStatus: fields.status,
+    aiExtractedAt: new Date(),
+  };
+  if (fields.title) data.title = fields.title;
+  if (fields.solicitationNumber) data.solicitationNumber = fields.solicitationNumber;
+  if (fields.vehicleType) data.vehicleType = fields.vehicleType;
+  if (fields.issuingAgency) data.issuingAgency = fields.issuingAgency;
+  if (fields.fundingAuthority) data.fundingAuthority = fields.fundingAuthority;
+  if (fields.questionsDueDate) data.questionsDueDate = fields.questionsDueDate;
+  if (fields.proposalDueDate) data.proposalDueDate = fields.proposalDueDate;
+  if (fields.periodOfPerformance) data.periodOfPerformance = fields.periodOfPerformance;
+  if (fields.fundingFloor) data.fundingFloor = fields.fundingFloor;
+  if (fields.fundingCeiling) data.fundingCeiling = fields.fundingCeiling;
+  if (fields.eligibility) data.eligibility = fields.eligibility;
+  if (fields.submissionFormat) data.submissionFormat = fields.submissionFormat;
+  if (fields.objective) data.objective = fields.objective;
+  data.focusAreas = JSON.stringify(fields.focusAreas);
+  data.pointsOfContact = JSON.stringify(fields.pointsOfContact);
+  data.additionalSections = JSON.stringify(fields.additionalSections);
+  // Reset confirmation when re-extracting — focus areas may have changed.
+  data.focusAreasConfirmedAt = null;
+  data.targetedFocusAreas = JSON.stringify([]);
+  await prisma.workflowTrack.update({ where: { id: trackId }, data }).catch(err => {
+    console.error('[runOpportunityExtraction] DB update failed:', err);
+  });
+}
+
+// Synchronous extract-preview. The new create flow blocks on this — we run
+// fetch (or accept pasted text) AND Opus extraction up front, then return
+// the structured fields. The caller turns the fields into a track via
+// createTrack so a track never exists in a half-extracted state.
+//
+// Body: { url } OR { text } OR both. If text is supplied, it's used directly
+// (skip fetch). Otherwise we fetch the URL.
+export async function extractPreview(req: AuthRequest, res: Response) {
+  const { url, text } = req.body as { url?: string; text?: string };
+
+  let pageText = '';
+  let sourceUrl: string | undefined = url ? String(url).trim() : undefined;
+
+  if (text && text.trim().length >= 100) {
+    pageText = String(text);
+  } else if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
+      const resp = await fetch(sourceUrl, {
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
+          'Accept': 'text/html,application/xhtml+xml,application/pdf,*/*',
+        },
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) {
+        return res.status(200).json({ ok: false, reason: 'http_error', status: resp.status });
+      }
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('application/pdf')) {
+        const buf = Buffer.from(await resp.arrayBuffer());
+        const pdfParseModule = await import('pdf-parse');
+        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+        const out = await pdfParse(buf);
+        pageText = (out.text || '').slice(0, 80_000);
+      } else {
+        const html = await resp.text();
+        pageText = html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 80_000);
+      }
+      if (pageText.length < 200) {
+        return res.status(200).json({ ok: false, reason: 'js_only_or_empty' });
+      }
+    } catch (err: any) {
+      console.error('[extractPreview] fetch failed:', err);
+      return res
+        .status(200)
+        .json({ ok: false, reason: err?.name === 'AbortError' ? 'timeout' : 'fetch_failed' });
+    }
+  } else {
+    return res.status(400).json({ ok: false, reason: 'invalid_input' });
+  }
+
+  const fields = await extractFieldsFromText(pageText);
+  return res.json({
+    ok: true,
+    sourceUrl,
+    fields: {
+      ...fields,
+      questionsDueDate: fields.questionsDueDate?.toISOString() || null,
+      proposalDueDate: fields.proposalDueDate?.toISOString() || null,
+    },
+  });
 }
 
 // Pre-flight URL probe used by the create-opportunity modal. Tells the UI
@@ -764,6 +902,14 @@ export async function updateTrack(req: AuthRequest, res: Response) {
     if (Array.isArray(targetedFocusAreas)) data.targetedFocusAreas = JSON.stringify(targetedFocusAreas);
     if (Array.isArray(pointsOfContact)) data.pointsOfContact = JSON.stringify(pointsOfContact);
     if (Array.isArray(additionalSections)) data.additionalSections = JSON.stringify(additionalSections);
+
+    // The "confirm targets" gesture sends focusAreasConfirmedAt: 'now', and
+    // the "edit targets" gesture sends null. Anything else is ignored.
+    if (req.body.focusAreasConfirmedAt === 'now') {
+      data.focusAreasConfirmedAt = new Date();
+    } else if (req.body.focusAreasConfirmedAt === null) {
+      data.focusAreasConfirmedAt = null;
+    }
 
     const track = await prisma.workflowTrack.update({ where: { id }, data });
 
