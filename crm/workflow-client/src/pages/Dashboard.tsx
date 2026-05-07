@@ -231,7 +231,10 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
           <Link to={`/tracks/${track.id}`} className="font-semibold text-accent hover:underline">
             {track.title}
           </Link>
-          <span className="badge badge-gold">{track.fundingVehicle || 'Track'}</span>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span className="badge badge-gold">{track.fundingVehicle || 'Track'}</span>
+            {track.isContractOpportunity && <FundingOppTag />}
+          </div>
         </div>
         {track.description && (
           <p className="text-xs text-text-muted mt-1 line-clamp-3">{track.description}</p>
@@ -313,7 +316,10 @@ function ListView({
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="badge badge-gold">{t.fundingVehicle || 'Track'}</span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="badge badge-gold">{t.fundingVehicle || 'Track'}</span>
+                  {t.isContractOpportunity && <FundingOppTag />}
+                </div>
                 <div className="w-32">
                   <div className="h-1.5 bg-bg-deep rounded overflow-hidden">
                     <div className="h-full bg-accent" style={{ width: `${s.pct}%` }} />
@@ -368,6 +374,25 @@ export function StatusBadge({ status }: { status: string }) {
     Draft: 'badge-amber',
   };
   return <span className={`badge ${map[status] || 'badge-muted'}`}>{status}</span>;
+}
+
+// Small label that flags a track as a contract/funding opportunity. Sits
+// right under the gold "Track" / vehicle pill so it's visible at a glance
+// from kanban or list view.
+export function FundingOppTag() {
+  return (
+    <span
+      className="text-[10px] uppercase tracking-wider font-semibold"
+      style={{
+        color: '#c9a84c',
+        borderBottom: '1px solid #c9a84c',
+        paddingBottom: 1,
+        letterSpacing: '0.08em',
+      }}
+    >
+      Funding Opportunity
+    </span>
+  );
 }
 
 function summarize(t: WorkflowTrack) {

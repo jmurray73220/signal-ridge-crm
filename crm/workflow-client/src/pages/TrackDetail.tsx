@@ -283,9 +283,23 @@ export function TrackDetail() {
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <div className="text-xs text-accent uppercase tracking-wider">
-            {track.fundingVehicle || 'Track'}
-          </div>
+          {track.isContractOpportunity ? (
+            <div
+              className="text-xs uppercase tracking-wider font-semibold inline-block"
+              style={{
+                color: '#c9a84c',
+                borderBottom: '2px solid #c9a84c',
+                paddingBottom: 2,
+                letterSpacing: '0.08em',
+              }}
+            >
+              Funding Opportunity
+            </div>
+          ) : (
+            <div className="text-xs text-accent uppercase tracking-wider">
+              {track.fundingVehicle || 'Track'}
+            </div>
+          )}
           <h1 className="text-2xl font-semibold mt-1">{track.title}</h1>
           {track.description && (
             <p className="text-text-muted text-sm mt-2 max-w-3xl">{track.description}</p>
