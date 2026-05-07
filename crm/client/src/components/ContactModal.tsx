@@ -192,16 +192,20 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
 
   // Bank of portfolios (seed + everything anyone else has used). Only fetched
   // when we know the contact is on a committee — saves a request for everyone
-  // else.
+  // else. The seed is also baked into the client so options render instantly
+  // even before the bank query completes.
+  const SEED_PORTFOLIOS = ['Intel', 'CYBERCOM', 'SOCOM', 'Army RDT&E', 'Navy RDT&E'];
   const { data: portfolioBank = [] } = useQuery({
     queryKey: ['issue-portfolios'],
     queryFn: () => contactsApi.issuePortfolios().then(r => r.data),
     enabled: isCommitteeEntity,
   });
-  // Show the bank plus any portfolio this contact has that isn't in the bank
-  // yet (e.g. a custom one that was just typed but hasn't been saved).
   const allPortfolioOptions = useMemo(() => {
-    const set = new Set<string>([...portfolioBank, ...form.issuePortfolios]);
+    const set = new Set<string>([
+      ...SEED_PORTFOLIOS,
+      ...portfolioBank,
+      ...form.issuePortfolios,
+    ]);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [portfolioBank, form.issuePortfolios]);
   const [newPortfolio, setNewPortfolio] = useState('');
@@ -393,60 +397,87 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
             <div>
               <label className="label">Issue Portfolios</label>
               <p className="text-xs mb-2" style={{ color: '#8b949e' }}>
-                Issue areas this committee staffer covers. Check any that apply, or add a new one.
+                Issue areas this committee staffer covers. Check any that apply, or add a new one below.
               </p>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {allPortfolioOptions.map(p => {
-                  const picked = form.issuePortfolios.includes(p);
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => togglePortfolio(p)}
-                      className="badge cursor-pointer transition-all flex items-center gap-1 text-xs"
-                      style={{
-                        background: picked ? 'rgba(201,168,76,0.15)' : 'rgba(139,148,158,0.06)',
-                        color: picked ? '#c9a84c' : '#8b949e',
-                        border: `1px solid ${picked ? '#c9a84c' : '#30363d'}`,
-                      }}
-                    >
-                      {picked && '✓ '}{p}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  className="input flex-1 text-sm"
-                  value={newPortfolio}
-                  onChange={e => setNewPortfolio(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
+              <div
+                className="rounded"
+                style={{ background: '#0d1117', border: '1px solid #30363d' }}
+              >
+                <div className="max-h-56 overflow-y-auto">
+                  {allPortfolioOptions.map(p => {
+                    const picked = form.issuePortfolios.includes(p);
+                    return (
+                      <label
+                        key={p}
+                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer transition-colors"
+                        style={{
+                          borderBottom: '1px solid #1c2333',
+                          background: picked ? 'rgba(201,168,76,0.08)' : 'transparent',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={picked}
+                          onChange={() => togglePortfolio(p)}
+                          style={{ accentColor: '#c9a84c' }}
+                        />
+                        <span
+                          className="text-sm"
+                          style={{ color: picked ? '#c9a84c' : '#e6edf3' }}
+                        >
+                          {p}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {allPortfolioOptions.length === 0 && (
+                    <div className="text-xs italic px-3 py-2" style={{ color: '#8b949e' }}>
+                      No portfolios yet — add one below.
+                    </div>
+                  )}
+                </div>
+                <div
+                  className="flex gap-2 px-3 py-2"
+                  style={{ borderTop: '1px solid #30363d' }}
+                >
+                  <input
+                    className="input flex-1 text-sm"
+                    value={newPortfolio}
+                    onChange={e => setNewPortfolio(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const t = newPortfolio.trim();
+                        if (t && !form.issuePortfolios.includes(t)) {
+                          setForm(f => ({ ...f, issuePortfolios: [...f.issuePortfolios, t] }));
+                        }
+                        setNewPortfolio('');
+                      }
+                    }}
+                    placeholder="Add a new portfolio…"
+                    style={{ padding: '4px 8px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    disabled={!newPortfolio.trim()}
+                    onClick={() => {
                       const t = newPortfolio.trim();
                       if (t && !form.issuePortfolios.includes(t)) {
                         setForm(f => ({ ...f, issuePortfolios: [...f.issuePortfolios, t] }));
                       }
                       setNewPortfolio('');
-                    }
-                  }}
-                  placeholder="Add a new portfolio…"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary text-sm"
-                  disabled={!newPortfolio.trim()}
-                  onClick={() => {
-                    const t = newPortfolio.trim();
-                    if (t && !form.issuePortfolios.includes(t)) {
-                      setForm(f => ({ ...f, issuePortfolios: [...f.issuePortfolios, t] }));
-                    }
-                    setNewPortfolio('');
-                  }}
-                >
-                  Add
-                </button>
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
+              {form.issuePortfolios.length > 0 && (
+                <div className="text-xs mt-1.5" style={{ color: '#8b949e' }}>
+                  {form.issuePortfolios.length} selected
+                </div>
+              )}
             </div>
           )}
 
