@@ -229,30 +229,129 @@ export async function updateContact(req: AuthRequest, res: Response) {
   }
 }
 
-// Bank of issue portfolios shown in the contact-edit checklist. Returns the
-// fixed seed list plus any other portfolio names already in use across
-// committee staff, deduped + alphabetized.
+// Bank of issue portfolios — sourced from the IssuePortfolio table. The
+// initial seed (Intel, CYBERCOM, SOCOM, Army RDT&E, Navy RDT&E) is inserted
+// on first read if the table is empty, so renames and deletes through this
+// API are durable.
 const SEED_ISSUE_PORTFOLIOS = ['Intel', 'CYBERCOM', 'SOCOM', 'Army RDT&E', 'Navy RDT&E'];
+
+async function ensureSeeded(): Promise<void> {
+  const count = await prisma.issuePortfolio.count();
+  if (count === 0) {
+    await prisma.issuePortfolio.createMany({
+      data: SEED_ISSUE_PORTFOLIOS.map(name => ({ name })),
+      skipDuplicates: true,
+    });
+  }
+}
 
 export async function listIssuePortfolios(_req: AuthRequest, res: Response) {
   try {
-    const rows = await prisma.contact.findMany({
-      where: { deletedAt: null },
-      select: { issuePortfolios: true },
+    await ensureSeeded();
+    const rows = await prisma.issuePortfolio.findMany({
+      orderBy: { name: 'asc' },
+      select: { name: true },
     });
-    const seen = new Set<string>(SEED_ISSUE_PORTFOLIOS);
-    for (const r of rows) {
-      try {
-        const arr = JSON.parse(r.issuePortfolios || '[]') as string[];
-        for (const p of arr) {
-          const trimmed = String(p).trim();
-          if (trimmed) seen.add(trimmed);
-        }
-      } catch { /* tolerate bad rows */ }
-    }
-    return res.json(Array.from(seen).sort((a, b) => a.localeCompare(b)));
+    return res.json(rows.map(r => r.name));
   } catch (err) {
     console.error('[listIssuePortfolios]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function createIssuePortfolio(req: AuthRequest, res: Response) {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name required' });
+  try {
+    await ensureSeeded();
+    await prisma.issuePortfolio.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+    return res.json({ name });
+  } catch (err) {
+    console.error('[createIssuePortfolio]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// Rename: update the bank row + rewrite every contact's JSON array that
+// contains the old name.
+export async function renameIssuePortfolio(req: AuthRequest, res: Response) {
+  const oldName = req.params.name;
+  const newName = String(req.body?.name || '').trim();
+  if (!oldName || !newName) return res.status(400).json({ error: 'oldName and new name required' });
+  if (oldName === newName) return res.json({ ok: true });
+  try {
+    const existing = await prisma.issuePortfolio.findUnique({ where: { name: oldName } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    const collision = await prisma.issuePortfolio.findUnique({ where: { name: newName } });
+    if (collision) return res.status(409).json({ error: `"${newName}" already exists` });
+
+    // Update the bank row.
+    await prisma.issuePortfolio.update({
+      where: { name: oldName },
+      data: { name: newName },
+    });
+
+    // Cascade to contacts. issuePortfolios is a JSON-stringified array — find
+    // anything that mentions the old name and rewrite it. Brute string match
+    // is fine for the volume we expect.
+    const matches = await prisma.contact.findMany({
+      where: { issuePortfolios: { contains: JSON.stringify(oldName).slice(1, -1) } },
+      select: { id: true, issuePortfolios: true },
+    });
+    for (const c of matches) {
+      try {
+        const arr = JSON.parse(c.issuePortfolios || '[]') as string[];
+        const next = arr.map(n => (n === oldName ? newName : n));
+        if (JSON.stringify(next) !== JSON.stringify(arr)) {
+          await prisma.contact.update({
+            where: { id: c.id },
+            data: { issuePortfolios: JSON.stringify(next) },
+          });
+        }
+      } catch { /* skip bad rows */ }
+    }
+
+    return res.json({ ok: true, renamed: matches.length });
+  } catch (err) {
+    console.error('[renameIssuePortfolio]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function deleteIssuePortfolio(req: AuthRequest, res: Response) {
+  const name = req.params.name;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  try {
+    const existing = await prisma.issuePortfolio.findUnique({ where: { name } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+
+    await prisma.issuePortfolio.delete({ where: { name } });
+
+    // Cascade: drop the name from every contact's JSON array.
+    const matches = await prisma.contact.findMany({
+      where: { issuePortfolios: { contains: JSON.stringify(name).slice(1, -1) } },
+      select: { id: true, issuePortfolios: true },
+    });
+    for (const c of matches) {
+      try {
+        const arr = JSON.parse(c.issuePortfolios || '[]') as string[];
+        const next = arr.filter(n => n !== name);
+        if (next.length !== arr.length) {
+          await prisma.contact.update({
+            where: { id: c.id },
+            data: { issuePortfolios: JSON.stringify(next) },
+          });
+        }
+      } catch { /* skip bad rows */ }
+    }
+
+    return res.json({ ok: true, removedFrom: matches.length });
+  } catch (err) {
+    console.error('[deleteIssuePortfolio]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

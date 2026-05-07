@@ -688,6 +688,17 @@ model WorkflowSOWVersion {
 // page text here. We persist it briefly so the user's CRM tab can pick it up
 // and turn it into a contract opportunity track.
 
+// Canonical bank of issue portfolios. Surfaced in the contact-edit
+// checklist for committee staff. The seed (Intel, CYBERCOM, SOCOM,
+// Army RDT&E, Navy RDT&E) is inserted by the controller on first read
+// if the table is empty, so adding/renaming/deleting from this table
+// is the source of truth — Contact.issuePortfolios just holds names.
+model IssuePortfolio {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 model BookmarkCapture {
   id         String    @id @default(uuid())
   userId     String

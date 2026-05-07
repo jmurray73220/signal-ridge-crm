@@ -32,6 +32,12 @@ export const contactsApi = {
   getInitiatives: (id: string) => api.get<any[]>(`/api/contacts/${id}/initiatives`),
   getTasks: (id: string) => api.get<Task[]>(`/api/contacts/${id}/tasks`),
   issuePortfolios: () => api.get<string[]>('/api/contacts/issue-portfolios'),
+  addIssuePortfolio: (name: string) =>
+    api.post<{ name: string }>('/api/contacts/issue-portfolios', { name }),
+  renameIssuePortfolio: (oldName: string, newName: string) =>
+    api.put(`/api/contacts/issue-portfolios/${encodeURIComponent(oldName)}`, { name: newName }),
+  deleteIssuePortfolio: (name: string) =>
+    api.delete(`/api/contacts/issue-portfolios/${encodeURIComponent(name)}`),
 };
 
 // Entities
