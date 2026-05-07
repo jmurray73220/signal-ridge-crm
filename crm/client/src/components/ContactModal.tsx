@@ -129,6 +129,7 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
     bio: contact?.bio || '',
     entityId: contact?.entityId || defaultEntityId || '',
     tags: contact?.tags || [] as string[],
+    issuePortfolios: contact?.issuePortfolios || [] as string[],
   });
   const [loading, setLoading] = useState(false);
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>('');
@@ -181,6 +182,30 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
       tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag],
     }));
 
+  const togglePortfolio = (p: string) =>
+    setForm(f => ({
+      ...f,
+      issuePortfolios: f.issuePortfolios.includes(p)
+        ? f.issuePortfolios.filter(x => x !== p)
+        : [...f.issuePortfolios, p],
+    }));
+
+  // Bank of portfolios (seed + everything anyone else has used). Only fetched
+  // when we know the contact is on a committee — saves a request for everyone
+  // else.
+  const { data: portfolioBank = [] } = useQuery({
+    queryKey: ['issue-portfolios'],
+    queryFn: () => contactsApi.issuePortfolios().then(r => r.data),
+    enabled: isCommitteeEntity,
+  });
+  // Show the bank plus any portfolio this contact has that isn't in the bank
+  // yet (e.g. a custom one that was just typed but hasn't been saved).
+  const allPortfolioOptions = useMemo(() => {
+    const set = new Set<string>([...portfolioBank, ...form.issuePortfolios]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [portfolioBank, form.issuePortfolios]);
+  const [newPortfolio, setNewPortfolio] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.firstName || !form.lastName) {
@@ -200,6 +225,9 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
         linkedIn: form.linkedIn || null,
         website: form.website || null,
         bio: form.bio || null,
+        // Drop portfolios entirely if the contact isn't on a committee — keeps
+        // the data clean if you reassign someone away from a committee.
+        issuePortfolios: isCommitteeEntity ? form.issuePortfolios : [],
       };
       if (contact?.id) {
         await contactsApi.update(contact.id, data);
@@ -360,6 +388,67 @@ export function ContactModal({ contact, defaultEntityId, onClose, onSave }: Prop
               style={{ resize: 'vertical' }}
             />
           </div>
+
+          {isCommitteeEntity && (
+            <div>
+              <label className="label">Issue Portfolios</label>
+              <p className="text-xs mb-2" style={{ color: '#8b949e' }}>
+                Issue areas this committee staffer covers. Check any that apply, or add a new one.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {allPortfolioOptions.map(p => {
+                  const picked = form.issuePortfolios.includes(p);
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => togglePortfolio(p)}
+                      className="badge cursor-pointer transition-all flex items-center gap-1 text-xs"
+                      style={{
+                        background: picked ? 'rgba(201,168,76,0.15)' : 'rgba(139,148,158,0.06)',
+                        color: picked ? '#c9a84c' : '#8b949e',
+                        border: `1px solid ${picked ? '#c9a84c' : '#30363d'}`,
+                      }}
+                    >
+                      {picked && '✓ '}{p}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1 text-sm"
+                  value={newPortfolio}
+                  onChange={e => setNewPortfolio(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const t = newPortfolio.trim();
+                      if (t && !form.issuePortfolios.includes(t)) {
+                        setForm(f => ({ ...f, issuePortfolios: [...f.issuePortfolios, t] }));
+                      }
+                      setNewPortfolio('');
+                    }
+                  }}
+                  placeholder="Add a new portfolio…"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={!newPortfolio.trim()}
+                  onClick={() => {
+                    const t = newPortfolio.trim();
+                    if (t && !form.issuePortfolios.includes(t)) {
+                      setForm(f => ({ ...f, issuePortfolios: [...f.issuePortfolios, t] }));
+                    }
+                    setNewPortfolio('');
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="label">Tags — Associations</label>

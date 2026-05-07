@@ -68,6 +68,7 @@ export interface Contact {
   linkedIn?: string;
   bio?: string;
   tags: string[];
+  issuePortfolios?: string[];
   entityId?: string;
   entity?: Entity;
   createdAt: string;

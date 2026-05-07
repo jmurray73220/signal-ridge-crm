@@ -91,6 +91,10 @@ model Contact {
   website     String?
   bio         String?
   tags        String  @default("[]") // JSON array stored as string in SQLite
+  // Issue portfolios — only meaningful for committee staff (entity name
+  // contains "committee"). Free-form list with a seed bank exposed via
+  // /api/contacts/issue-portfolios; new portfolios just get added by name.
+  issuePortfolios String @default("[]")
   entityId    String?
   entity      Entity? @relation(fields: [entityId], references: [id])
 

@@ -10,6 +10,7 @@ import {
   getContactInteractions,
   getContactInitiatives,
   getContactTasks,
+  listIssuePortfolios,
 } from '../controllers/contactsController';
 
 const router = Router();
@@ -17,6 +18,8 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', getContacts);
+// Must be declared before /:id so Express doesn't treat "issue-portfolios" as an id.
+router.get('/issue-portfolios', listIssuePortfolios);
 router.post('/', requireEditor, createContact);
 router.post('/import', requireEditor, importContacts);
 router.get('/:id', getContact);

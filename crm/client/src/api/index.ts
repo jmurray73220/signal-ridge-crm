@@ -31,6 +31,7 @@ export const contactsApi = {
   getInteractions: (id: string) => api.get<Interaction[]>(`/api/contacts/${id}/interactions`),
   getInitiatives: (id: string) => api.get<any[]>(`/api/contacts/${id}/initiatives`),
   getTasks: (id: string) => api.get<Task[]>(`/api/contacts/${id}/tasks`),
+  issuePortfolios: () => api.get<string[]>('/api/contacts/issue-portfolios'),
 };
 
 // Entities

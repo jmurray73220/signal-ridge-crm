@@ -269,7 +269,11 @@ export async function getEntityContacts(req: AuthRequest, res: Response) {
       where: { entityId: id },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
-    return res.json(contacts.map(c => ({ ...c, tags: JSON.parse(c.tags || '[]') })));
+    return res.json(contacts.map(c => ({
+      ...c,
+      tags: JSON.parse(c.tags || '[]'),
+      issuePortfolios: JSON.parse((c as any).issuePortfolios || '[]'),
+    })));
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }

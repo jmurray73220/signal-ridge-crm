@@ -72,6 +72,7 @@ export async function getContacts(req: AuthRequest, res: Response) {
     const result = contacts.map(c => ({
       ...c,
       tags: JSON.parse(c.tags || '[]'),
+      issuePortfolios: JSON.parse(c.issuePortfolios || '[]'),
       lastInteraction: c.interactions[0]?.interaction?.date || null,
     }));
 
@@ -133,6 +134,7 @@ export async function getContact(req: AuthRequest, res: Response) {
     return res.json({
       ...contact,
       tags: JSON.parse(contact.tags || '[]'),
+      issuePortfolios: JSON.parse(contact.issuePortfolios || '[]'),
       entity: contact.entity ? {
         ...contact.entity,
         tags: JSON.parse(contact.entity.tags || '[]'),
@@ -146,7 +148,7 @@ export async function getContact(req: AuthRequest, res: Response) {
 }
 
 export async function createContact(req: AuthRequest, res: Response) {
-  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, entityId } = req.body;
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, issuePortfolios, entityId } = req.body;
 
   if (!firstName || !lastName) {
     return res.status(400).json({ error: 'First and last name required' });
@@ -166,13 +168,18 @@ export async function createContact(req: AuthRequest, res: Response) {
         website: website || null,
         bio: bio || null,
         tags: JSON.stringify(tags || []),
+        issuePortfolios: JSON.stringify(issuePortfolios || []),
         entityId: entityId || null,
         createdByUserId: req.user!.userId,
         updatedByUserId: req.user!.userId,
       },
       include: { entity: { select: { id: true, name: true, entityType: true } } },
     });
-    return res.status(201).json({ ...contact, tags: JSON.parse(contact.tags || '[]') });
+    return res.status(201).json({
+      ...contact,
+      tags: JSON.parse(contact.tags || '[]'),
+      issuePortfolios: JSON.parse(contact.issuePortfolios || '[]'),
+    });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }
@@ -180,7 +187,7 @@ export async function createContact(req: AuthRequest, res: Response) {
 
 export async function updateContact(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, entityId } = req.body;
+  const { firstName, lastName, rank, title, email, officePhone, cell, linkedIn, website, bio, tags, issuePortfolios, entityId } = req.body;
 
   try {
     const before = await prisma.contact.findUnique({ where: { id } });
@@ -199,6 +206,7 @@ export async function updateContact(req: AuthRequest, res: Response) {
         website: website !== undefined ? website : undefined,
         bio: bio !== undefined ? bio : undefined,
         ...(tags !== undefined && { tags: JSON.stringify(tags) }),
+        ...(issuePortfolios !== undefined && { issuePortfolios: JSON.stringify(issuePortfolios) }),
         entityId: entityId !== undefined ? entityId : undefined,
         updatedByUserId: req.user!.userId,
       },
@@ -211,8 +219,40 @@ export async function updateContact(req: AuthRequest, res: Response) {
       before: before as unknown as Record<string, unknown>,
       after: contact as unknown as Record<string, unknown>,
     });
-    return res.json({ ...contact, tags: JSON.parse(contact.tags || '[]') });
+    return res.json({
+      ...contact,
+      tags: JSON.parse(contact.tags || '[]'),
+      issuePortfolios: JSON.parse(contact.issuePortfolios || '[]'),
+    });
   } catch (err) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// Bank of issue portfolios shown in the contact-edit checklist. Returns the
+// fixed seed list plus any other portfolio names already in use across
+// committee staff, deduped + alphabetized.
+const SEED_ISSUE_PORTFOLIOS = ['Intel', 'CYBERCOM', 'SOCOM', 'Army RDT&E', 'Navy RDT&E'];
+
+export async function listIssuePortfolios(_req: AuthRequest, res: Response) {
+  try {
+    const rows = await prisma.contact.findMany({
+      where: { deletedAt: null },
+      select: { issuePortfolios: true },
+    });
+    const seen = new Set<string>(SEED_ISSUE_PORTFOLIOS);
+    for (const r of rows) {
+      try {
+        const arr = JSON.parse(r.issuePortfolios || '[]') as string[];
+        for (const p of arr) {
+          const trimmed = String(p).trim();
+          if (trimmed) seen.add(trimmed);
+        }
+      } catch { /* tolerate bad rows */ }
+    }
+    return res.json(Array.from(seen).sort((a, b) => a.localeCompare(b)));
+  } catch (err) {
+    console.error('[listIssuePortfolios]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

@@ -187,6 +187,26 @@ export function ContactDetail() {
               )}
             </div>
 
+            {/* Issue Portfolios — only meaningful for committee staff. */}
+            {contact.entity?.name?.toLowerCase().includes('committee') && contact.issuePortfolios?.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: '#8b949e' }}>
+                  Issue Portfolios
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {contact.issuePortfolios.map((p: string) => (
+                    <span
+                      key={p}
+                      className="badge"
+                      style={{ background: 'rgba(201,168,76,0.12)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.3)' }}
+                    >
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Tags */}
             {contact.tags?.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-4">

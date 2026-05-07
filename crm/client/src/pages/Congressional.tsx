@@ -253,7 +253,7 @@ export function Congressional() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid #30363d' }}>
-                  {['Name', 'Title', 'Office / Committee', 'Tags'].map(h => (
+                  {['Name', 'Title', 'Office / Committee', 'Portfolios / Tags'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
                   ))}
                   <th className="w-8" />
@@ -292,6 +292,15 @@ export function Congressional() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
+                          {isCommittee && (c.issuePortfolios || []).map(p => (
+                            <span
+                              key={`p-${p}`}
+                              className="badge"
+                              style={{ background: 'rgba(201,168,76,0.12)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.3)' }}
+                            >
+                              {p}
+                            </span>
+                          ))}
                           {(c.tags || []).slice(0, 3).map(tag => (
                             <span key={tag} className="badge" style={{ background: '#161b22', color: '#8b949e', border: '1px solid #30363d' }}>
                               {tag}
