@@ -14,12 +14,15 @@ import {
   Plus,
   Building2,
   Search,
+  DollarSign,
+  Megaphone,
+  ExternalLink,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { budgetApi, reportTemplateApi, entitiesApi } from '../api';
-import type { BudgetDocument, ChatMessage, Entity } from '../types';
+import type { BudgetDocument, ChatMessage, Entity, Award, Opportunity } from '../types';
 
 // ─── Client Selector ────────────────────────────────────────────────────────
 
@@ -898,6 +901,8 @@ function ReportTemplatesSection({ canEdit }: { canEdit: boolean }) {
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
+type BudgetTab = 'documents' | 'awards' | 'solicitations';
+
 export function BudgetAnalyzer() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -906,6 +911,7 @@ export function BudgetAnalyzer() {
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [tab, setTab] = useState<BudgetTab>('documents');
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['budget-documents'],
@@ -955,55 +961,77 @@ export function BudgetAnalyzer() {
       {/* Step 1: Client Selection */}
       <ClientSelector selectedClient={selectedClient} onSelect={setSelectedClient} />
 
-      {/* Step 2: Document Library */}
-      <DocumentLibrary
-        documents={documents}
-        isLoading={isLoading}
-        selectedDocs={selectedDocIds}
-        onToggle={handleToggleDoc}
-        onUploadClick={() => setShowUpload(true)}
-        onDelete={handleDelete}
-        canEdit={canEdit}
-        disabled={!selectedClient}
-      />
+      {/* Tab bar */}
+      <BudgetTabs tab={tab} onChange={setTab} />
 
-      {/* Document tabs when multiple selected */}
-      {selectedDocIds.size > 1 && selectedClient && (
-        <div className="flex gap-2 flex-wrap">
-          {Array.from(selectedDocIds).map(id => {
-            const doc = documents.find(d => d.id === id);
-            if (!doc) return null;
-            return (
-              <button
-                key={id}
-                onClick={() => setActiveDocId(id)}
-                className="text-xs px-3 py-1.5 rounded-full transition-colors"
-                style={{
-                  background: activeDocId === id ? '#c9a84c' : '#1c2333',
-                  color: activeDocId === id ? '#0d1117' : '#e6edf3',
-                  border: `1px solid ${activeDocId === id ? '#c9a84c' : '#30363d'}`,
-                }}
-              >
-                {doc.name}
-              </button>
-            );
-          })}
-        </div>
+      {tab === 'documents' && (
+        <>
+          {/* Step 2: Document Library */}
+          <DocumentLibrary
+            documents={documents}
+            isLoading={isLoading}
+            selectedDocs={selectedDocIds}
+            onToggle={handleToggleDoc}
+            onUploadClick={() => setShowUpload(true)}
+            onDelete={handleDelete}
+            canEdit={canEdit}
+            disabled={!selectedClient}
+          />
+
+          {/* Cross-document search — only shown when no specific document is
+              loaded into chat. Once you pick one, the chat is the search. */}
+          {selectedClient && documents.length > 0 && selectedDocIds.size === 0 && (
+            <CrossDocumentSearch
+              client={selectedClient}
+              onOpenDoc={(docId) => {
+                setSelectedDocIds(new Set([docId]));
+                setActiveDocId(docId);
+              }}
+            />
+          )}
+
+          {/* Document tabs when multiple selected */}
+          {selectedDocIds.size > 1 && selectedClient && (
+            <div className="flex gap-2 flex-wrap">
+              {Array.from(selectedDocIds).map(id => {
+                const doc = documents.find(d => d.id === id);
+                if (!doc) return null;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveDocId(id)}
+                    className="text-xs px-3 py-1.5 rounded-full transition-colors"
+                    style={{
+                      background: activeDocId === id ? '#c9a84c' : '#1c2333',
+                      color: activeDocId === id ? '#0d1117' : '#e6edf3',
+                      border: `1px solid ${activeDocId === id ? '#c9a84c' : '#30363d'}`,
+                    }}
+                  >
+                    {doc.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Chat Interface */}
+          {canChat && (
+            <ChatInterface
+              doc={activeDoc}
+              documents={documents}
+              selectedDocIds={Array.from(selectedDocIds)}
+              client={selectedClient}
+              canEdit={canEdit}
+            />
+          )}
+
+          {/* Report Templates */}
+          <ReportTemplatesSection canEdit={canEdit} />
+        </>
       )}
 
-      {/* Chat Interface */}
-      {canChat && (
-        <ChatInterface
-          doc={activeDoc}
-          documents={documents}
-          selectedDocIds={Array.from(selectedDocIds)}
-          client={selectedClient}
-          canEdit={canEdit}
-        />
-      )}
-
-      {/* Report Templates */}
-      <ReportTemplatesSection canEdit={canEdit} />
+      {tab === 'awards' && <AwardsSearch />}
+      {tab === 'solicitations' && <SolicitationsSearch />}
 
       {/* Upload Modal */}
       {showUpload && (
@@ -1014,6 +1042,380 @@ export function BudgetAnalyzer() {
             qc.invalidateQueries({ queryKey: ['budget-documents'] });
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── Tab Bar ─────────────────────────────────────────────────────────────────
+
+function BudgetTabs({ tab, onChange }: { tab: BudgetTab; onChange: (t: BudgetTab) => void }) {
+  const tabs: { id: BudgetTab; label: string; icon: typeof FileText }[] = [
+    { id: 'documents', label: 'Documents', icon: FileText },
+    { id: 'awards', label: 'Awards', icon: DollarSign },
+    { id: 'solicitations', label: 'Solicitations', icon: Megaphone },
+  ];
+  return (
+    <div className="flex gap-1 border-b" style={{ borderColor: '#30363d' }}>
+      {tabs.map(t => {
+        const active = tab === t.id;
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className="px-4 py-2 text-sm flex items-center gap-2 transition-colors"
+            style={{
+              color: active ? '#c9a84c' : '#8b949e',
+              borderBottom: `2px solid ${active ? '#c9a84c' : 'transparent'}`,
+              marginBottom: '-1px',
+            }}
+          >
+            <Icon size={14} /> {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Cross-Document Search ───────────────────────────────────────────────────
+
+function CrossDocumentSearch({
+  client,
+  onOpenDoc,
+}: {
+  client: Entity;
+  onOpenDoc: (docId: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState<string | null>(null);
+  const [sources, setSources] = useState<BudgetDocument[]>([]);
+  const [docCount, setDocCount] = useState<number | null>(null);
+
+  async function run() {
+    if (!query.trim()) return;
+    setLoading(true);
+    setResponse(null);
+    setSources([]);
+    try {
+      const res = await budgetApi.searchAll(query.trim(), client.id);
+      setResponse(res.data.response);
+      setSources(res.data.sources);
+      setDocCount(res.data.sources.length);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ background: '#161b22', border: '1px solid #30363d' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Search size={14} style={{ color: '#c9a84c' }} />
+        <h3 className="text-sm font-semibold" style={{ color: '#e6edf3' }}>
+          Search across all documents
+        </h3>
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="input flex-1"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') run(); }}
+          placeholder="e.g. hypersonic propulsion FY2026"
+          disabled={loading}
+        />
+        <button
+          onClick={run}
+          disabled={loading || !query.trim()}
+          className="btn-primary flex items-center gap-1.5 text-sm"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </div>
+
+      {loading && (
+        <p className="text-xs mt-3 italic" style={{ color: '#8b949e' }}>
+          Searching documents…
+        </p>
+      )}
+
+      {response && (
+        <div className="mt-4">
+          <div
+            className="prose prose-invert max-w-none text-sm"
+            style={{ color: '#e6edf3' }}
+          >
+            <ReactMarkdown>{response}</ReactMarkdown>
+          </div>
+          {sources.length > 0 && (
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #30363d' }}>
+              <div className="text-xs uppercase tracking-wider mb-2" style={{ color: '#8b949e' }}>
+                Sources ({sources.length})
+              </div>
+              <div className="space-y-1">
+                {sources.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => onOpenDoc(s.id)}
+                    className="block w-full text-left text-xs px-2.5 py-1.5 rounded hover:opacity-80"
+                    style={{ background: '#1c2333', border: '1px solid #30363d', color: '#e6edf3' }}
+                  >
+                    <span className="font-medium">{s.name}</span>
+                    <span style={{ color: '#8b949e' }}> · {s.documentType} · {s.fiscalYear} · {s.serviceBranch}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {docCount === 0 && (
+            <p className="text-xs italic mt-2" style={{ color: '#8b949e' }}>
+              No documents matched.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Awards (USASpending) ────────────────────────────────────────────────────
+
+function AwardsSearch() {
+  const [keywordInput, setKeywordInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Award[]>([]);
+  const [searched, setSearched] = useState(false);
+
+  async function run() {
+    const keywords = keywordInput.split(',').map(k => k.trim()).filter(Boolean);
+    if (keywords.length === 0) {
+      toast.error('Enter at least one keyword');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await budgetApi.getAwards(keywords);
+      // Sort by amount desc — server already does this but be safe.
+      setResults([...res.data].sort((a, b) => b.awardAmount - a.awardAmount));
+      setSearched(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to fetch awards');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ background: '#161b22', border: '1px solid #30363d' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <DollarSign size={14} style={{ color: '#c9a84c' }} />
+        <h3 className="text-sm font-semibold" style={{ color: '#e6edf3' }}>
+          DoD contract awards (USASpending, last 3 years)
+        </h3>
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input
+          className="input flex-1"
+          value={keywordInput}
+          onChange={e => setKeywordInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') run(); }}
+          placeholder="Keywords, comma-separated (e.g. drone, swarm, autonomy)"
+          disabled={loading}
+        />
+        <button
+          onClick={run}
+          disabled={loading || !keywordInput.trim()}
+          className="btn-primary flex items-center gap-1.5 text-sm"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Searching…' : 'Search Awards'}
+        </button>
+      </div>
+
+      {loading && (
+        <p className="text-xs italic" style={{ color: '#8b949e' }}>Querying USASpending…</p>
+      )}
+
+      {searched && !loading && results.length === 0 && (
+        <p className="text-xs italic" style={{ color: '#8b949e' }}>No awards matched.</p>
+      )}
+
+      {results.length > 0 && (
+        <div className="overflow-x-auto rounded" style={{ border: '1px solid #30363d' }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: '#0d1117', borderBottom: '1px solid #30363d' }}>
+                <th className="px-3 py-2 text-left uppercase tracking-wider" style={{ color: '#8b949e' }}>Recipient</th>
+                <th className="px-3 py-2 text-right uppercase tracking-wider" style={{ color: '#8b949e' }}>Amount</th>
+                <th className="px-3 py-2 text-left uppercase tracking-wider" style={{ color: '#8b949e' }}>Agency</th>
+                <th className="px-3 py-2 text-left uppercase tracking-wider" style={{ color: '#8b949e' }}>Start</th>
+                <th className="px-3 py-2 text-left uppercase tracking-wider" style={{ color: '#8b949e' }}>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((a, i) => {
+                const cellStyle: React.CSSProperties = { borderBottom: '1px solid #21262d', color: '#e6edf3' };
+                const url = a.awardId ? `https://www.usaspending.gov/award/${encodeURIComponent(a.awardId)}` : null;
+                return (
+                  <tr key={`${a.awardId || i}`}>
+                    <td className="px-3 py-2 font-medium" style={cellStyle}>
+                      {url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="hover:opacity-80" style={{ color: '#c9a84c', textDecoration: 'none' }}>
+                          {a.recipientName || '—'}
+                        </a>
+                      ) : (a.recipientName || '—')}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={cellStyle}>
+                      ${a.awardAmount.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2" style={cellStyle}>{a.awardingAgency || '—'}</td>
+                    <td className="px-3 py-2" style={cellStyle}>{a.startDate || '—'}</td>
+                    <td className="px-3 py-2" style={cellStyle}>
+                      <span title={a.description}>
+                        {a.description && a.description.length > 80 ? a.description.slice(0, 80) + '…' : (a.description || '—')}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Solicitations (SAM.gov) ─────────────────────────────────────────────────
+
+function SolicitationsSearch() {
+  const [keywords, setKeywords] = useState('');
+  const [daysBack, setDaysBack] = useState(90);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Opportunity[]>([]);
+  const [searched, setSearched] = useState(false);
+
+  async function run() {
+    if (!keywords.trim()) {
+      toast.error('Enter keywords');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await budgetApi.getSolicitations(keywords.trim(), daysBack);
+      setResults(res.data);
+      setSearched(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to fetch solicitations');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function deadlineColor(deadline: string): string | undefined {
+    if (!deadline) return undefined;
+    const d = new Date(deadline);
+    if (isNaN(d.getTime())) return undefined;
+    const days = (d.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return days <= 14 && days >= 0 ? '#da3633' : undefined;
+  }
+
+  return (
+    <div className="card" style={{ background: '#161b22', border: '1px solid #30363d' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Megaphone size={14} style={{ color: '#c9a84c' }} />
+        <h3 className="text-sm font-semibold" style={{ color: '#e6edf3' }}>
+          Open solicitations (SAM.gov)
+        </h3>
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input
+          className="input flex-1"
+          value={keywords}
+          onChange={e => setKeywords(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') run(); }}
+          placeholder="Keywords (e.g. counter-UAS detection)"
+          disabled={loading}
+        />
+        <select
+          className="input w-auto"
+          value={daysBack}
+          onChange={e => setDaysBack(parseInt(e.target.value))}
+          disabled={loading}
+        >
+          <option value={30}>Last 30 days</option>
+          <option value={60}>Last 60 days</option>
+          <option value={90}>Last 90 days</option>
+          <option value={180}>Last 180 days</option>
+        </select>
+        <button
+          onClick={run}
+          disabled={loading || !keywords.trim()}
+          className="btn-primary flex items-center gap-1.5 text-sm"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Searching…' : 'Search Opportunities'}
+        </button>
+      </div>
+
+      {loading && (
+        <p className="text-xs italic" style={{ color: '#8b949e' }}>Querying SAM.gov…</p>
+      )}
+
+      {searched && !loading && results.length === 0 && (
+        <p className="text-xs italic" style={{ color: '#8b949e' }}>No open opportunities found.</p>
+      )}
+
+      {results.length > 0 && (
+        <div className="space-y-2">
+          {results.map((o, i) => {
+            const dColor = deadlineColor(o.responseDeadLine);
+            return (
+              <div
+                key={`${o.solicitationNumber || i}`}
+                className="rounded p-3"
+                style={{ background: '#0d1117', border: '1px solid #30363d' }}
+              >
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <a
+                    href={o.uiLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium hover:opacity-80 flex-1 min-w-0"
+                    style={{ color: '#c9a84c', textDecoration: 'none' }}
+                  >
+                    {o.title || '(untitled)'}
+                    <ExternalLink size={11} className="inline ml-1 opacity-60" />
+                  </a>
+                  {o.type && (
+                    <span
+                      className="badge text-xs shrink-0"
+                      style={{ background: 'rgba(201,168,76,0.1)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)' }}
+                    >
+                      {o.type}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5" style={{ color: '#8b949e' }}>
+                  {o.agency && <span>{o.agency}</span>}
+                  {o.solicitationNumber && <span>Sol #: {o.solicitationNumber}</span>}
+                  {o.naicsCode && <span>NAICS: {o.naicsCode}</span>}
+                  {o.postedDate && <span>Posted: {o.postedDate}</span>}
+                  {o.responseDeadLine && (
+                    <span style={{ color: dColor || '#8b949e', fontWeight: dColor ? 600 : undefined }}>
+                      Due: {o.responseDeadLine}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

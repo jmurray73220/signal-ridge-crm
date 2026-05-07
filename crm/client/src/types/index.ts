@@ -173,6 +173,28 @@ export interface BudgetDocument {
   createdAt: string;
 }
 
+export interface Award {
+  awardId: string;
+  recipientName: string;
+  awardAmount: number;
+  description: string;
+  awardingAgency: string;
+  startDate: string;
+  naicsCode?: string;
+}
+
+export interface Opportunity {
+  title: string;
+  solicitationNumber: string;
+  agency: string;
+  postedDate: string;
+  responseDeadLine: string;
+  naicsCode: string;
+  type: string;
+  uiLink: string;
+  description: string;
+}
+
 export interface BudgetConversation {
   id: string;
   budgetDocumentId: string;

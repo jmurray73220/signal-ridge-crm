@@ -11,6 +11,9 @@ import {
   createConversation,
   updateConversation,
   getConversations,
+  searchAllDocuments,
+  getAwards,
+  getSolicitations,
 } from '../controllers/budgetController';
 
 const router = Router();
@@ -40,5 +43,12 @@ router.put('/conversations/:id', requireEditor, updateConversation);
 
 // Links
 router.post('/links', requireEditor, createBudgetLink);
+
+// Cross-document search
+router.post('/search', searchAllDocuments);
+
+// External feeds
+router.post('/awards', getAwards);
+router.post('/solicitations', getSolicitations);
 
 export default router;

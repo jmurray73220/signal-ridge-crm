@@ -1,5 +1,5 @@
 import api from './client';
-import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User, BudgetDocument, BudgetConversation, ReportTemplate, BudgetLink } from '../types';
+import type { Contact, Entity, Initiative, Interaction, Reminder, Task, User, BudgetDocument, BudgetConversation, ReportTemplate, BudgetLink, Award, Opportunity } from '../types';
 
 // Auth
 export const authApi = {
@@ -280,6 +280,14 @@ export const budgetApi = {
   // Links
   createLink: (data: { conversationId: string; entityType: string; entityId: string; note?: string }) =>
     api.post<BudgetLink>('/api/budgets/links', data),
+  // Cross-document search
+  searchAll: (query: string, companyId?: string) =>
+    api.post<{ response: string; sources: BudgetDocument[] }>('/api/budgets/search', { query, companyId }),
+  // External feeds
+  getAwards: (keywords: string[]) =>
+    api.post<Award[]>('/api/budgets/awards', { keywords }),
+  getSolicitations: (keywords: string, daysBack?: number) =>
+    api.post<Opportunity[]>('/api/budgets/solicitations', { keywords, daysBack }),
 };
 
 // Report Templates

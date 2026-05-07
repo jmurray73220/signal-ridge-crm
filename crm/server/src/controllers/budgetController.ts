@@ -4,6 +4,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { AuthRequest } from '../types';
+import { searchAwards } from '../services/usaSpendingService';
+import { searchOpportunities } from '../services/samGovService';
 
 // ─── Document Library ────────────────────────────────────────────────────────
 
@@ -331,5 +333,101 @@ export async function getConversations(req: AuthRequest, res: Response) {
     return res.json(convos.map(c => ({ ...c, messages: JSON.parse(c.messages) })));
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── Cross-Document Search ───────────────────────────────────────────────────
+// Full-text search every uploaded budget document, hand the matching excerpts
+// to Claude, and synthesize a cited answer.
+
+function extractExcerpts(text: string, query: string, maxChars = 1500): string {
+  const lower = text.toLowerCase();
+  const queryLower = query.toLowerCase();
+  const idx = lower.indexOf(queryLower);
+  if (idx === -1) return text.substring(0, maxChars);
+  const start = Math.max(0, idx - 500);
+  const end = Math.min(text.length, idx + 1000);
+  return (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '');
+}
+
+export async function searchAllDocuments(req: AuthRequest, res: Response) {
+  const { query, companyId } = req.body;
+  if (!query) return res.status(400).json({ error: 'Query required' });
+
+  try {
+    const docs = await prisma.budgetDocument.findMany({
+      where: { extractedText: { contains: query, mode: 'insensitive' } },
+      select: {
+        id: true, name: true, documentType: true, fiscalYear: true,
+        serviceBranch: true, extractedText: true,
+      },
+    });
+
+    if (docs.length === 0) {
+      return res.json({ response: 'No documents contain information relevant to that query.', sources: [] });
+    }
+
+    let companyContext = '';
+    if (companyId) {
+      const company = await prisma.entity.findUnique({ where: { id: companyId } });
+      if (company) {
+        companyContext = `\n\nFocus on relevance to: ${company.name} — ${company.capabilityDescription || company.description || ''}`;
+      }
+    }
+
+    const docContext = docs
+      .map(d =>
+        `[SOURCE: ${d.name} | ${d.documentType} | ${d.fiscalYear} | ${d.serviceBranch}]\n${extractExcerpts(d.extractedText, query)}`
+      )
+      .join('\n\n---\n\n');
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: `You are a defense acquisition intelligence analyst. Answer the user's query using ONLY the provided document excerpts. Cite sources by name. Be specific — include program names, dollar amounts, section numbers, and fiscal years where available.${companyContext}`,
+      messages: [{ role: 'user', content: `Query: ${query}\n\nDocument excerpts:\n\n${docContext}` }],
+    });
+
+    return res.json({
+      response: (response.content[0] as any).text,
+      sources: docs.map(d => ({
+        id: d.id, name: d.name, documentType: d.documentType,
+        fiscalYear: d.fiscalYear, serviceBranch: d.serviceBranch,
+      })),
+    });
+  } catch (err) {
+    console.error('[searchAllDocuments]', err);
+    return res.status(500).json({ error: 'Search failed' });
+  }
+}
+
+// ─── External feeds: USASpending awards + SAM.gov solicitations ──────────────
+
+export async function getAwards(req: AuthRequest, res: Response) {
+  const { keywords } = req.body;
+  if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+    return res.status(400).json({ error: 'keywords array required' });
+  }
+  try {
+    const awards = await searchAwards(keywords);
+    return res.json(awards);
+  } catch (err: any) {
+    console.error('[getAwards]', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch awards' });
+  }
+}
+
+export async function getSolicitations(req: AuthRequest, res: Response) {
+  const { keywords, daysBack } = req.body;
+  if (!keywords || typeof keywords !== 'string') {
+    return res.status(400).json({ error: 'keywords string required' });
+  }
+  try {
+    const opps = await searchOpportunities(keywords, daysBack || 90);
+    return res.json(opps);
+  } catch (err: any) {
+    console.error('[getSolicitations]', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch solicitations' });
   }
 }
