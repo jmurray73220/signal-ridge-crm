@@ -1973,6 +1973,105 @@ function safeJsonArray(s: string | null | undefined): any[] {
  *   - All active CRM users (so Signal Ridge staff — including Jon — can be
  *     assigned actions even though they are not Shadowgrid contacts)
  */
+// Everything (action items, steps, phases) assigned to the logged-in user
+// across every track they have access to. Used by the dashboard "My tasks"
+// panel. assignedTo is a free-form display-name string, so we match on
+// "First Last".
+export async function listMyTasks(req: AuthRequest, res: Response) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  // JWT only stores userId — fetch the name fresh so the assignedTo match
+  // tracks renames (the assignment field is a free-form display name).
+  const me = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    select: { firstName: true, lastName: true },
+  });
+  const myName = `${me?.firstName || ''} ${me?.lastName || ''}`.trim();
+  if (!myName) return res.json({ actions: [], steps: [], phases: [] });
+
+  const isWfAdmin = req.user.workflowRole === 'WorkflowAdmin';
+  const wfClientId = req.user.workflowClientId || null;
+
+  // Track scope: admin sees everything, scoped users see only their client.
+  const trackScope: any = isWfAdmin ? {} : (wfClientId ? { workflowClientId: wfClientId } : { id: '__none__' });
+
+  try {
+    const [actions, steps, phases] = await Promise.all([
+      prisma.workflowActionItem.findMany({
+        where: {
+          assignedTo: myName,
+          deletedAt: null,
+          status: { not: 'Done' },
+          milestone: { phase: { track: trackScope } },
+        },
+        select: {
+          id: true, title: true, status: true, dueDate: true,
+          milestone: {
+            select: {
+              id: true, title: true,
+              phase: {
+                select: {
+                  id: true, title: true,
+                  track: {
+                    select: {
+                      id: true, title: true,
+                      workflowClient: { select: { id: true, name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ dueDate: 'asc' }, { title: 'asc' }],
+      }),
+      prisma.workflowMilestone.findMany({
+        where: {
+          assignedTo: myName,
+          status: { not: 'Completed' },
+          phase: { track: trackScope },
+        },
+        select: {
+          id: true, title: true, status: true, dueDate: true,
+          phase: {
+            select: {
+              id: true, title: true,
+              track: {
+                select: {
+                  id: true, title: true,
+                  workflowClient: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ dueDate: 'asc' }, { title: 'asc' }],
+      }),
+      prisma.workflowPhase.findMany({
+        where: {
+          assignedTo: myName,
+          status: { not: 'Completed' },
+          track: trackScope,
+        },
+        select: {
+          id: true, title: true, status: true,
+          track: {
+            select: {
+              id: true, title: true,
+              workflowClient: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: [{ title: 'asc' }],
+      }),
+    ]);
+
+    return res.json({ actions, steps, phases });
+  } catch (err) {
+    console.error('[listMyTasks]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 export async function listAssignees(req: AuthRequest, res: Response) {
   const { id } = req.params; // workflowClientId
   if (!assertClientAccess(req, id)) return res.status(403).json({ error: 'Forbidden' });
@@ -1988,8 +2087,15 @@ export async function listAssignees(req: AuthRequest, res: Response) {
         })
       : [];
 
+    // "Signal Ridge team" = active humans on the Signal Ridge side. Exclude:
+    //  - Users scoped to a workflow client (those are the client's own people)
+    //  - Bot/machine users (anything with an ApiKey row, e.g. Bubba)
     const users = await prisma.user.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        workflowClientId: null,
+        apiKeys: { none: {} },
+      },
       select: { id: true, firstName: true, lastName: true, email: true, role: true },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });

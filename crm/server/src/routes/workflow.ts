@@ -34,6 +34,7 @@ router.get('/clients/crm-entities', requireWorkflowAdmin, ctl.listCrmClientEntit
 router.post('/clients/backfill-from-crm', requireWorkflowAdmin, ctl.backfillClientsFromCrm);
 router.get('/clients/:id', ctl.getClient);
 router.get('/clients/:id/assignees', ctl.listAssignees);
+router.get('/my-tasks', ctl.listMyTasks);
 router.post('/clients', requireWorkflowAdmin, ctl.createClient);
 router.put('/clients/:id', requireWorkflowAdmin, ctl.updateClient);
 router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);

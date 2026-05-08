@@ -14,6 +14,7 @@ import { useAuth } from '../AuthContext';
 import { useClientContext } from '../ClientContext';
 import type { WorkflowTrack, WorkflowActionItem } from '../types';
 import { NewTrackModal } from '../components/NewTrackModal';
+import { MyTasksPanel } from '../components/MyTasksPanel';
 
 type View = 'kanban' | 'list';
 
@@ -88,6 +89,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <MyTasksPanel />
       {activeClient && (
         <div className="mb-6 pb-5 border-b border-border">
           <h1 className="text-3xl font-semibold text-accent tracking-tight">
@@ -255,7 +257,7 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
             {track.title}
           </Link>
           <div className="flex flex-col items-end gap-1 shrink-0">
-            <span className="badge badge-gold">{track.fundingVehicle || 'Track'}</span>
+            {track.fundingVehicle && <span className="badge badge-gold">{track.fundingVehicle}</span>}
             {track.priority && <PriorityBadge priority={track.priority} />}
           </div>
         </div>
@@ -345,7 +347,7 @@ function ListView({
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex flex-col items-end gap-1">
-                  <span className="badge badge-gold">{t.fundingVehicle || 'Track'}</span>
+                  {t.fundingVehicle && <span className="badge badge-gold">{t.fundingVehicle}</span>}
                   {t.priority && <PriorityBadge priority={t.priority} />}
                 </div>
                 <div className="w-32">

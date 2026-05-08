@@ -274,6 +274,44 @@ export async function listAssignees(workflowClientId: string): Promise<Assignee[
   return data;
 }
 
+export interface MyTaskAction {
+  id: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  milestone: {
+    id: string; title: string;
+    phase: {
+      id: string; title: string;
+      track: { id: string; title: string; workflowClient: { id: string; name: string } };
+    };
+  };
+}
+export interface MyTaskStep {
+  id: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  phase: {
+    id: string; title: string;
+    track: { id: string; title: string; workflowClient: { id: string; name: string } };
+  };
+}
+export interface MyTaskPhase {
+  id: string;
+  title: string;
+  status: string;
+  track: { id: string; title: string; workflowClient: { id: string; name: string } };
+}
+export async function listMyTasks(): Promise<{
+  actions: MyTaskAction[];
+  steps: MyTaskStep[];
+  phases: MyTaskPhase[];
+}> {
+  const { data } = await api.get('/api/workflow/my-tasks');
+  return data;
+}
+
 // Comments
 export async function createComment(body: { actionItemId?: string; sowId?: string; content: string }) {
   const { data } = await api.post('/api/workflow/comments', body);
