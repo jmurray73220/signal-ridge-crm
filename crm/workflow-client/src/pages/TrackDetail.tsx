@@ -19,6 +19,8 @@ import {
   updateActionItem,
   retryExtractTrack,
   extractTrackFromText,
+  listAssignees,
+  type Assignee,
 } from '../api';
 import type {
   WorkflowTrack,
@@ -208,7 +210,7 @@ export function TrackDetail() {
     }
   }
 
-  async function saveStep(form: { title: string; description: string; dueDate: string; status: MilestoneStatus }) {
+  async function saveStep(form: { title: string; description: string; dueDate: string; status: MilestoneStatus; assignedTo: string | null }) {
     if (!stepEdit) return;
     setStepSaving(true);
     try {
@@ -217,6 +219,7 @@ export function TrackDetail() {
         description: form.description.trim() || null,
         dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null,
         status: form.status,
+        assignedTo: form.assignedTo,
       });
       toast.success('Step updated');
       qc.invalidateQueries({ queryKey: ['track', id] });
@@ -243,7 +246,7 @@ export function TrackDetail() {
     }
   }
 
-  async function savePhase(form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus }) {
+  async function savePhase(form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus; assignedTo: string | null }) {
     if (!phaseEdit) return;
     setPhaseSaving(true);
     try {
@@ -253,6 +256,7 @@ export function TrackDetail() {
         budget: form.budget.trim() || null,
         timeframe: form.timeframe.trim() || null,
         status: form.status,
+        assignedTo: form.assignedTo,
       });
       toast.success('Phase updated');
       qc.invalidateQueries({ queryKey: ['track', id] });
@@ -518,6 +522,7 @@ export function TrackDetail() {
         <PhaseEditModal
           phase={phaseEdit}
           saving={phaseSaving}
+          workflowClientId={track.workflowClientId}
           onClose={() => setPhaseEdit(null)}
           onSubmit={savePhase}
         />
@@ -527,6 +532,7 @@ export function TrackDetail() {
         <StepEditModal
           step={stepEdit}
           saving={stepSaving}
+          workflowClientId={track.workflowClientId}
           onClose={() => setStepEdit(null)}
           onSubmit={saveStep}
         />
@@ -766,9 +772,10 @@ function PhaseBlock({
           <div>
             <div className="font-semibold">{phase.title}</div>
             {phase.description && <p className="text-sm text-text-muted mt-1">{phase.description}</p>}
-            <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+            <div className="flex items-center gap-3 mt-2 text-xs text-text-muted flex-wrap">
               {phase.budget && <span>Budget: <span className="text-accent">{phase.budget}</span></span>}
               {phase.timeframe && <span>Timeframe: <span className="text-text-primary">{phase.timeframe}</span></span>}
+              {phase.assignedTo && <span>Assigned: <span className="text-text-primary">@{phase.assignedTo}</span></span>}
             </div>
           </div>
         </button>
@@ -880,11 +887,10 @@ function MilestoneBlock({
           <div>
             <div className="font-medium">{milestone.title}</div>
             {milestone.description && <p className="text-xs text-text-muted mt-1">{milestone.description}</p>}
-            {milestone.dueDate && (
-              <div className="text-xs text-text-muted mt-1">
-                Due {new Date(milestone.dueDate).toLocaleDateString()}
-              </div>
-            )}
+            <div className="flex items-center gap-3 mt-1 text-xs text-text-muted flex-wrap">
+              {milestone.dueDate && <span>Due {new Date(milestone.dueDate).toLocaleDateString()}</span>}
+              {milestone.assignedTo && <span>Assigned: <span className="text-text-primary">@{milestone.assignedTo}</span></span>}
+            </div>
           </div>
         </button>
         <div className="flex items-center gap-2">
@@ -945,22 +951,74 @@ function MilestoneBlock({
   );
 }
 
+// Shared assignee dropdown — reads contacts (from the client's CRM entity)
+// and active users via /api/workflow/clients/:id/assignees, the same source
+// the action-item assignee uses.
+function AssigneePicker({
+  workflowClientId,
+  value,
+  onChange,
+  disabled,
+}: {
+  workflowClientId: string;
+  value: string | null;
+  onChange: (v: string | null) => void;
+  disabled?: boolean;
+}) {
+  const { data: assignees = [] } = useQuery<Assignee[]>({
+    queryKey: ['assignees', workflowClientId],
+    queryFn: () => listAssignees(workflowClientId),
+    enabled: !!workflowClientId,
+  });
+  const contacts = assignees.filter((a) => a.kind === 'contact');
+  const users = assignees.filter((a) => a.kind === 'user');
+  return (
+    <select
+      className="input"
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      disabled={disabled}
+    >
+      <option value="">— Unassigned —</option>
+      {contacts.length > 0 && (
+        <optgroup label="Client contacts">
+          {contacts.map((a) => (
+            <option key={`c-${a.id}`} value={a.name}>
+              {a.name}{a.subtitle ? ` — ${a.subtitle}` : ''}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {users.length > 0 && (
+        <optgroup label="Signal Ridge team">
+          {users.map((a) => (
+            <option key={`u-${a.id}`} value={a.name}>{a.name}</option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
 function PhaseEditModal({
   phase,
   saving,
+  workflowClientId,
   onClose,
   onSubmit,
 }: {
   phase: WorkflowPhase;
   saving: boolean;
+  workflowClientId: string;
   onClose: () => void;
-  onSubmit: (form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus }) => void;
+  onSubmit: (form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus; assignedTo: string | null }) => void;
 }) {
   const [form, setForm] = useState({
     title: phase.title,
     description: phase.description || '',
     budget: phase.budget || '',
     timeframe: phase.timeframe || '',
+    assignedTo: phase.assignedTo || null as string | null,
   });
 
   return (
@@ -988,9 +1046,6 @@ function PhaseEditModal({
             required
           />
         </div>
-        <p className="text-xs text-text-muted">
-          Status is auto-derived from this phase's steps and can't be set manually.
-        </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Budget</label>
@@ -1010,6 +1065,14 @@ function PhaseEditModal({
               placeholder="e.g. Q3 2026"
             />
           </div>
+        </div>
+        <div>
+          <label className="label">Assigned to</label>
+          <AssigneePicker
+            workflowClientId={workflowClientId}
+            value={form.assignedTo}
+            onChange={(v) => setForm((f) => ({ ...f, assignedTo: v }))}
+          />
         </div>
         <div>
           <label className="label">Description</label>
@@ -1036,18 +1099,21 @@ function PhaseEditModal({
 function StepEditModal({
   step,
   saving,
+  workflowClientId,
   onClose,
   onSubmit,
 }: {
   step: WorkflowMilestone;
   saving: boolean;
+  workflowClientId: string;
   onClose: () => void;
-  onSubmit: (form: { title: string; description: string; dueDate: string; status: MilestoneStatus }) => void;
+  onSubmit: (form: { title: string; description: string; dueDate: string; status: MilestoneStatus; assignedTo: string | null }) => void;
 }) {
   const [form, setForm] = useState({
     title: step.title,
     description: step.description || '',
     dueDate: step.dueDate ? step.dueDate.slice(0, 10) : '',
+    assignedTo: step.assignedTo || null as string | null,
   });
 
   return (
@@ -1074,17 +1140,24 @@ function StepEditModal({
             required
           />
         </div>
-        <p className="text-xs text-text-muted">
-          Status is auto-derived from this step's action items and can't be set manually.
-        </p>
-        <div>
-          <label className="label">Due date</label>
-          <input
-            type="date"
-            className="input"
-            value={form.dueDate}
-            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Due date</label>
+            <input
+              type="date"
+              className="input"
+              value={form.dueDate}
+              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="label">Assigned to</label>
+            <AssigneePicker
+              workflowClientId={workflowClientId}
+              value={form.assignedTo}
+              onChange={(v) => setForm((f) => ({ ...f, assignedTo: v }))}
+            />
+          </div>
         </div>
         <div>
           <label className="label">Description</label>

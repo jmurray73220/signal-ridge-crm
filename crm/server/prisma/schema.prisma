@@ -558,6 +558,10 @@ model WorkflowPhase {
   status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
   // When true, the user has explicitly set status; auto-derive from milestones is skipped.
   statusManuallySet Boolean @default(false)
+  // Single free-form assignee — display name pulled from the client's
+  // CRM contacts + active users (see listAssignees). Mirrors the existing
+  // assignedTo on WorkflowActionItem.
+  assignedTo  String?
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -602,6 +606,8 @@ model WorkflowMilestone {
   status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
   // When true, the user has explicitly set status; auto-derive from action items is skipped.
   statusManuallySet Boolean @default(false)
+  // Single free-form assignee — same pattern as WorkflowPhase / WorkflowActionItem.
+  assignedTo  String?
   completedAt DateTime?
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())

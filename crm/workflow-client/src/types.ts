@@ -48,6 +48,7 @@ export interface WorkflowMilestone {
   dueDate: string | null;
   status: MilestoneStatus;
   statusManuallySet?: boolean;
+  assignedTo?: string | null;
   completedAt: string | null;
   sortOrder: number;
   actionItems: WorkflowActionItem[];
@@ -80,6 +81,7 @@ export interface WorkflowPhase {
   timeframe: string | null;
   status: PhaseStatus;
   statusManuallySet?: boolean;
+  assignedTo?: string | null;
   sortOrder: number;
   milestones: WorkflowMilestone[];
   attachments?: PhaseAttachment[];

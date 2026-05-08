@@ -1099,7 +1099,7 @@ export async function promoteInitiativeToTrack(req: AuthRequest, res: Response) 
 // ─── Phases ───────────────────────────────────────────────────────────────
 
 export async function createPhase(req: AuthRequest, res: Response) {
-  const { trackId, title, description, budget, timeframe, status, sortOrder } = req.body;
+  const { trackId, title, description, budget, timeframe, status, assignedTo, sortOrder } = req.body;
   if (!trackId || !title) return res.status(400).json({ error: 'trackId and title required' });
   try {
     const phase = await prisma.workflowPhase.create({
@@ -1110,6 +1110,7 @@ export async function createPhase(req: AuthRequest, res: Response) {
         budget: budget || null,
         timeframe: timeframe || null,
         status: status || 'NotStarted',
+        assignedTo: assignedTo || null,
         sortOrder: sortOrder ?? 0,
       },
     });
@@ -1121,7 +1122,7 @@ export async function createPhase(req: AuthRequest, res: Response) {
 
 export async function updatePhase(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, description, budget, timeframe, status, statusManuallySet, sortOrder } = req.body;
+  const { title, description, budget, timeframe, status, statusManuallySet, assignedTo, sortOrder } = req.body;
   try {
     // Setting a status manually flips the override flag on. Sending
     // statusManuallySet:false alone clears the override (back to auto-derive).
@@ -1130,6 +1131,7 @@ export async function updatePhase(req: AuthRequest, res: Response) {
       ...(description !== undefined && { description }),
       ...(budget !== undefined && { budget }),
       ...(timeframe !== undefined && { timeframe }),
+      ...(assignedTo !== undefined && { assignedTo: assignedTo || null }),
       ...(sortOrder !== undefined && { sortOrder }),
     };
     if (status !== undefined) {
@@ -1179,7 +1181,7 @@ async function clientIdForMilestone(milestoneId: string): Promise<string | null>
 }
 
 export async function createMilestone(req: AuthRequest, res: Response) {
-  const { phaseId, title, description, dueDate, status, sortOrder } = req.body;
+  const { phaseId, title, description, dueDate, status, assignedTo, sortOrder } = req.body;
   if (!phaseId || !title) return res.status(400).json({ error: 'phaseId and title required' });
   try {
     const cid = await clientIdForPhase(phaseId);
@@ -1193,6 +1195,7 @@ export async function createMilestone(req: AuthRequest, res: Response) {
         description: description || null,
         dueDate: dueDate ? new Date(dueDate) : null,
         status: status || 'NotStarted',
+        assignedTo: assignedTo || null,
         sortOrder: sortOrder ?? 0,
       },
     });
@@ -1204,7 +1207,7 @@ export async function createMilestone(req: AuthRequest, res: Response) {
 
 export async function updateMilestone(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, description, dueDate, status, statusManuallySet, sortOrder } = req.body;
+  const { title, description, dueDate, status, statusManuallySet, assignedTo, sortOrder } = req.body;
   try {
     const cid = await clientIdForMilestone(id);
     if (!cid) return res.status(404).json({ error: 'Step not found' });
@@ -1214,6 +1217,7 @@ export async function updateMilestone(req: AuthRequest, res: Response) {
       ...(title !== undefined && { title }),
       ...(description !== undefined && { description }),
       ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+      ...(assignedTo !== undefined && { assignedTo: assignedTo || null }),
       ...(sortOrder !== undefined && { sortOrder }),
     };
     if (status !== undefined) {
