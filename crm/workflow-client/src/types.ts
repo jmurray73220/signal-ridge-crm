@@ -47,6 +47,7 @@ export interface WorkflowMilestone {
   description: string | null;
   dueDate: string | null;
   status: MilestoneStatus;
+  statusManuallySet?: boolean;
   completedAt: string | null;
   sortOrder: number;
   actionItems: WorkflowActionItem[];
@@ -78,6 +79,7 @@ export interface WorkflowPhase {
   budget: string | null;
   timeframe: string | null;
   status: PhaseStatus;
+  statusManuallySet?: boolean;
   sortOrder: number;
   milestones: WorkflowMilestone[];
   attachments?: PhaseAttachment[];
@@ -95,6 +97,7 @@ export interface WorkflowTrack {
   description: string | null;
   fundingVehicle: string | null;
   status: TrackStatus;
+  priority?: 'High' | 'Medium' | 'Low';
   sortOrder: number;
   isContractOpportunity?: boolean;
   opportunityUrl?: string | null;

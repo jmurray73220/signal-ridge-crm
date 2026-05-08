@@ -183,14 +183,30 @@ function derivePhaseStatus(milestones: Array<{ status: string }>, stored: string
 
 /**
  * Apply derivation in order: steps first (so phases can read their derived
- * status), then phases.
+ * status), then phases. Skip derivation when statusManuallySet is true —
+ * lets the user override the auto-derived status from the UI without it
+ * getting clobbered on the next read.
  */
-function applyDerivedPhaseStatus<T extends { phases: Array<{ status: string; milestones: Array<{ status: string; actionItems: Array<{ status: string }> }> }> }>(track: T): T {
+function applyDerivedPhaseStatus<T extends {
+  phases: Array<{
+    status: string;
+    statusManuallySet?: boolean;
+    milestones: Array<{
+      status: string;
+      statusManuallySet?: boolean;
+      actionItems: Array<{ status: string }>;
+    }>;
+  }>;
+}>(track: T): T {
   for (const phase of track.phases) {
     for (const m of phase.milestones) {
-      m.status = deriveStepStatus(m.actionItems, m.status);
+      if (!m.statusManuallySet) {
+        m.status = deriveStepStatus(m.actionItems, m.status);
+      }
     }
-    phase.status = derivePhaseStatus(phase.milestones, phase.status);
+    if (!phase.statusManuallySet) {
+      phase.status = derivePhaseStatus(phase.milestones, phase.status);
+    }
   }
   return track;
 }
@@ -363,7 +379,7 @@ const OPPORTUNITY_PHASES: { title: string; description: string; status: 'InProgr
 
 export async function createTrack(req: AuthRequest, res: Response) {
   const {
-    workflowClientId, title, description, fundingVehicle, status, sortOrder,
+    workflowClientId, title, description, fundingVehicle, status, priority, sortOrder,
     isContractOpportunity, opportunityUrl,
     // Pre-extracted opportunity fields. When supplied, the track is created
     // with these baked in and no background extraction runs. The new
@@ -379,6 +395,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
       description: description || null,
       fundingVehicle: fundingVehicle || null,
       status: status || 'Active',
+      priority: priority || 'Medium',
       sortOrder: sortOrder ?? 0,
       isContractOpportunity: isOpp,
       opportunityUrl: isOpp && opportunityUrl ? String(opportunityUrl).trim() : null,
@@ -871,7 +888,7 @@ export async function retryExtractTrackFromUrl(req: AuthRequest, res: Response) 
 export async function updateTrack(req: AuthRequest, res: Response) {
   const { id } = req.params;
   const {
-    title, description, fundingVehicle, status, sortOrder,
+    title, description, fundingVehicle, status, priority, sortOrder,
     opportunityUrl, solicitationNumber, vehicleType,
     issuingAgency, fundingAuthority,
     questionsDueDate, proposalDueDate, periodOfPerformance,
@@ -888,6 +905,7 @@ export async function updateTrack(req: AuthRequest, res: Response) {
       ...(description !== undefined && { description }),
       ...(fundingVehicle !== undefined && { fundingVehicle }),
       ...(status !== undefined && { status }),
+      ...(priority !== undefined && { priority }),
       ...(sortOrder !== undefined && { sortOrder }),
       ...(opportunityUrl !== undefined && { opportunityUrl: opportunityUrl || null }),
       ...(solicitationNumber !== undefined && { solicitationNumber: solicitationNumber || null }),
@@ -1103,19 +1121,26 @@ export async function createPhase(req: AuthRequest, res: Response) {
 
 export async function updatePhase(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, description, budget, timeframe, status, sortOrder } = req.body;
+  const { title, description, budget, timeframe, status, statusManuallySet, sortOrder } = req.body;
   try {
-    const phase = await prisma.workflowPhase.update({
-      where: { id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description }),
-        ...(budget !== undefined && { budget }),
-        ...(timeframe !== undefined && { timeframe }),
-        ...(status !== undefined && { status }),
-        ...(sortOrder !== undefined && { sortOrder }),
-      },
-    });
+    // Setting a status manually flips the override flag on. Sending
+    // statusManuallySet:false alone clears the override (back to auto-derive).
+    const data: any = {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(budget !== undefined && { budget }),
+      ...(timeframe !== undefined && { timeframe }),
+      ...(sortOrder !== undefined && { sortOrder }),
+    };
+    if (status !== undefined) {
+      data.status = status;
+      data.statusManuallySet = true;
+    }
+    if (statusManuallySet === false) {
+      data.statusManuallySet = false;
+    }
+
+    const phase = await prisma.workflowPhase.update({ where: { id }, data });
     return res.json(phase);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
@@ -1179,25 +1204,28 @@ export async function createMilestone(req: AuthRequest, res: Response) {
 
 export async function updateMilestone(req: AuthRequest, res: Response) {
   const { id } = req.params;
-  const { title, description, dueDate, status, sortOrder } = req.body;
+  const { title, description, dueDate, status, statusManuallySet, sortOrder } = req.body;
   try {
     const cid = await clientIdForMilestone(id);
     if (!cid) return res.status(404).json({ error: 'Step not found' });
     if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
 
-    const milestone = await prisma.workflowMilestone.update({
-      where: { id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description }),
-        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-        ...(status !== undefined && {
-          status,
-          completedAt: status === 'Completed' ? new Date() : null,
-        }),
-        ...(sortOrder !== undefined && { sortOrder }),
-      },
-    });
+    const data: any = {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+      ...(sortOrder !== undefined && { sortOrder }),
+    };
+    if (status !== undefined) {
+      data.status = status;
+      data.statusManuallySet = true;
+      data.completedAt = status === 'Completed' ? new Date() : null;
+    }
+    if (statusManuallySet === false) {
+      data.statusManuallySet = false;
+    }
+
+    const milestone = await prisma.workflowMilestone.update({ where: { id }, data });
     return res.json(milestone);
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });

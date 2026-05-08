@@ -165,8 +165,10 @@ function Kanban({
   canPromote: boolean;
   onPromote: (id: string) => void;
 }) {
+  // Multi-row responsive grid — columns wrap onto new rows so the page
+  // scrolls vertically instead of one wide horizontal scroll bar.
   return (
-    <div className="grid grid-flow-col auto-cols-[minmax(300px,340px)] gap-4 overflow-x-auto pb-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-4">
       {tracks.map((t) => (
         <TrackColumn key={t.id} track={t} />
       ))}
@@ -174,6 +176,22 @@ function Kanban({
         <OrphanColumn key={o.id} initiative={o} canPromote={canPromote} onPromote={onPromote} />
       ))}
     </div>
+  );
+}
+
+// Same color palette as the CRM's Initiative PriorityBadge so they read as
+// the same concept across both apps.
+function PriorityBadge({ priority }: { priority: 'High' | 'Medium' | 'Low' }) {
+  const styles = {
+    High: { bg: '#2d0f0f', color: '#da3633' },
+    Medium: { bg: '#2d1e00', color: '#d29922' },
+    Low: { bg: '#0f2020', color: '#34d399' },
+  } as const;
+  const s = styles[priority];
+  return (
+    <span className="badge" style={{ background: s.bg, color: s.color }}>
+      {priority.toUpperCase()}
+    </span>
   );
 }
 
@@ -236,7 +254,10 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
           <Link to={`/tracks/${track.id}`} className="font-semibold text-accent hover:underline">
             {track.title}
           </Link>
-          <span className="badge badge-gold shrink-0">{track.fundingVehicle || 'Track'}</span>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span className="badge badge-gold">{track.fundingVehicle || 'Track'}</span>
+            {track.priority && <PriorityBadge priority={track.priority} />}
+          </div>
         </div>
         {track.description && (
           <p className="text-xs text-text-muted mt-1 line-clamp-3">{track.description}</p>
@@ -323,7 +344,10 @@ function ListView({
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="badge badge-gold">{t.fundingVehicle || 'Track'}</span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="badge badge-gold">{t.fundingVehicle || 'Track'}</span>
+                  {t.priority && <PriorityBadge priority={t.priority} />}
+                </div>
                 <div className="w-32">
                   <div className="h-1.5 bg-bg-deep rounded overflow-hidden">
                     <div className="h-full bg-accent" style={{ width: `${s.pct}%` }} />

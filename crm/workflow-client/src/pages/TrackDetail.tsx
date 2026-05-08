@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, ArrowLeft, Trash2, Pencil, FileText, ArrowRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, ArrowLeft, Trash2, Pencil, FileText, ArrowRight, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   api,
@@ -63,7 +63,7 @@ export function TrackDetail() {
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-  const [editForm, setEditForm] = useState({ title: '', description: '', fundingVehicle: '' });
+  const [editForm, setEditForm] = useState({ title: '', description: '', fundingVehicle: '', priority: 'Medium' as 'High' | 'Medium' | 'Low' });
   const [addSowOpen, setAddSowOpen] = useState(false);
   const [creatingSow, setCreatingSow] = useState(false);
   const [deleteSowOpen, setDeleteSowOpen] = useState(false);
@@ -83,6 +83,7 @@ export function TrackDetail() {
         title: track.title,
         description: track.description || '',
         fundingVehicle: track.fundingVehicle || '',
+        priority: (track.priority as 'High' | 'Medium' | 'Low') || 'Medium',
       });
     }
   }, [track?.id]);
@@ -165,6 +166,42 @@ export function TrackDetail() {
   async function quickUpdateActionStatus(actionId: string, status: ActionItemStatus) {
     try {
       await updateActionItem(actionId, { status });
+      qc.invalidateQueries({ queryKey: ['track', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
+  async function setPhaseStatus(phaseId: string, status: string) {
+    try {
+      await updatePhase(phaseId, { status });
+      qc.invalidateQueries({ queryKey: ['track', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
+  async function clearPhaseStatusOverride(phaseId: string) {
+    try {
+      await updatePhase(phaseId, { statusManuallySet: false });
+      qc.invalidateQueries({ queryKey: ['track', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
+  async function setStepStatus(milestoneId: string, status: string) {
+    try {
+      await updateMilestone(milestoneId, { status });
+      qc.invalidateQueries({ queryKey: ['track', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    }
+  }
+
+  async function clearStepStatusOverride(milestoneId: string) {
+    try {
+      await updateMilestone(milestoneId, { statusManuallySet: false });
       qc.invalidateQueries({ queryKey: ['track', id] });
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed');
@@ -254,6 +291,7 @@ export function TrackDetail() {
         title: editForm.title.trim(),
         description: editForm.description.trim() || null,
         fundingVehicle: editForm.fundingVehicle.trim() || null,
+        priority: editForm.priority,
       });
       toast.success('Track updated');
       qc.invalidateQueries({ queryKey: ['track', id] });
@@ -397,6 +435,10 @@ export function TrackDetail() {
                 sortOrder: m.actionItems.length,
               })
             }
+            onPhaseStatusChange={setPhaseStatus}
+            onPhaseStatusClear={clearPhaseStatusOverride}
+            onStepStatusChange={setStepStatus}
+            onStepStatusClear={clearStepStatusOverride}
             trackId={track.id}
             canUploadFiles={canEditSteps}
           />
@@ -560,6 +602,18 @@ export function TrackDetail() {
               />
             </div>
             <div>
+              <label className="label">Priority</label>
+              <select
+                className="input"
+                value={editForm.priority}
+                onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value as 'High' | 'Medium' | 'Low' }))}
+              >
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div>
               <label className="label">Description</label>
               <textarea
                 className="textarea"
@@ -584,6 +638,8 @@ export function TrackDetail() {
 }
 
 const ACTION_STATUSES: ActionItemStatus[] = ['Todo', 'InProgress', 'Done', 'Blocked'];
+const PHASE_STATUSES = ['NotStarted', 'InProgress', 'Completed', 'Blocked'] as const;
+const STEP_STATUSES = ['NotStarted', 'InProgress', 'Completed', 'Blocked'] as const;
 const STATUS_LABEL: Record<string, string> = {
   NotStarted: 'Not Started',
   InProgress: 'In Progress',
@@ -619,6 +675,53 @@ function StatusSelect<T extends string>({
   );
 }
 
+// Phase / step status control: looks like a normal status dropdown, plus a
+// small revert icon that only shows when the user has overridden the
+// auto-derived value. Clicking it clears the override and the next read goes
+// back to derive-from-children.
+function EditableStatusControl({
+  status,
+  manuallySet,
+  options,
+  onChange,
+  onClearOverride,
+  autoTooltip,
+}: {
+  status: string;
+  manuallySet: boolean;
+  options: readonly string[];
+  onChange: (s: string) => void;
+  onClearOverride: () => void;
+  autoTooltip: string;
+}) {
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={status}
+        onChange={(e) => onChange(e.target.value)}
+        className="badge cursor-pointer bg-surface border border-border text-xs"
+        title={manuallySet ? 'Manually set — click ↺ to revert' : autoTooltip}
+      >
+        {options.map((s) => (
+          <option key={s} value={s}>
+            {STATUS_LABEL[s] || s}
+          </option>
+        ))}
+      </select>
+      {manuallySet && (
+        <button
+          type="button"
+          onClick={onClearOverride}
+          title="Revert to auto-derived status"
+          className="text-text-muted hover:text-accent"
+        >
+          <RotateCcw size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PhaseBlock({
   phase,
   isAdmin,
@@ -630,6 +733,10 @@ function PhaseBlock({
   onDeleteStep,
   onActionStatusChange,
   onAddAction,
+  onPhaseStatusChange,
+  onPhaseStatusClear,
+  onStepStatusChange,
+  onStepStatusClear,
   trackId,
   canUploadFiles,
 }: {
@@ -643,6 +750,10 @@ function PhaseBlock({
   onDeleteStep: (m: WorkflowMilestone) => void;
   onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
   onAddAction: (m: WorkflowMilestone) => void;
+  onPhaseStatusChange: (phaseId: string, status: string) => void;
+  onPhaseStatusClear: (phaseId: string) => void;
+  onStepStatusChange: (milestoneId: string, status: string) => void;
+  onStepStatusClear: (milestoneId: string) => void;
   trackId: string;
   canUploadFiles: boolean;
 }) {
@@ -662,8 +773,20 @@ function PhaseBlock({
           </div>
         </button>
         <div className="flex items-center gap-2">
-          {/* Phase status is auto-derived from steps — read-only badge. */}
-          <StatusBadge status={phase.status} />
+          {/* Phase status: editor can override the auto-derived value, with
+              a small revert button to go back to auto. */}
+          {isAdmin ? (
+            <EditableStatusControl
+              status={phase.status}
+              manuallySet={!!phase.statusManuallySet}
+              options={PHASE_STATUSES}
+              onChange={(s) => onPhaseStatusChange(phase.id, s)}
+              onClearOverride={() => onPhaseStatusClear(phase.id)}
+              autoTooltip="Auto-derived from steps. Pick a value to override."
+            />
+          ) : (
+            <StatusBadge status={phase.status} />
+          )}
           {canEditSteps && (
             <button
               onClick={onAddStep}
@@ -715,6 +838,8 @@ function PhaseBlock({
                 onDelete={() => onDeleteStep(m)}
                 onAddAction={() => onAddAction(m)}
                 onActionStatusChange={onActionStatusChange}
+                onStatusChange={(s) => onStepStatusChange(m.id, s)}
+                onStatusClear={() => onStepStatusClear(m.id)}
               />
             ))}
             {phase.milestones.length === 0 && (
@@ -734,6 +859,8 @@ function MilestoneBlock({
   onDelete,
   onAddAction,
   onActionStatusChange,
+  onStatusChange,
+  onStatusClear,
 }: {
   milestone: WorkflowMilestone;
   canEdit: boolean;
@@ -741,6 +868,8 @@ function MilestoneBlock({
   onDelete: () => void;
   onAddAction: () => void;
   onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
+  onStatusChange: (status: string) => void;
+  onStatusClear: () => void;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -759,8 +888,19 @@ function MilestoneBlock({
           </div>
         </button>
         <div className="flex items-center gap-2">
-          {/* Step status is auto-derived from its action items — read-only. */}
-          <StatusBadge status={milestone.status} />
+          {/* Step status: editor can override the auto-derived value. */}
+          {canEdit ? (
+            <EditableStatusControl
+              status={milestone.status}
+              manuallySet={!!milestone.statusManuallySet}
+              options={STEP_STATUSES}
+              onChange={onStatusChange}
+              onClearOverride={onStatusClear}
+              autoTooltip="Auto-derived from action items. Pick a value to override."
+            />
+          ) : (
+            <StatusBadge status={milestone.status} />
+          )}
           {canEdit && (
             <>
               <button onClick={onAddAction} className="btn-ghost flex items-center gap-1 text-xs" title="Add action">

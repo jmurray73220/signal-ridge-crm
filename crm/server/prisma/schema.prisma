@@ -503,6 +503,7 @@ model WorkflowTrack {
   description      String?
   fundingVehicle   String?
   status           String         @default("Active") // Active | OnHold | Completed | Archived
+  priority         String         @default("Medium") // High | Medium | Low — mirrors Initiative.priority
   sortOrder        Int            @default(0)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -555,6 +556,8 @@ model WorkflowPhase {
   budget      String?
   timeframe   String?
   status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  // When true, the user has explicitly set status; auto-derive from milestones is skipped.
+  statusManuallySet Boolean @default(false)
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -597,6 +600,8 @@ model WorkflowMilestone {
   description String?
   dueDate     DateTime?
   status      String        @default("NotStarted") // NotStarted | InProgress | Completed | Blocked
+  // When true, the user has explicitly set status; auto-derive from action items is skipped.
+  statusManuallySet Boolean @default(false)
   completedAt DateTime?
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())
