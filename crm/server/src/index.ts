@@ -24,6 +24,7 @@ import workflowRoutes from './routes/workflow';
 import bubbaRoutes from './routes/bubba';
 import recycleBinRoutes from './routes/recycleBin';
 import botRoutes from './routes/bot';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { receiveBookmarkPost, bookmarkletSource } from './controllers/bookmarkletController';
 import { requireAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
@@ -102,6 +103,14 @@ app.post('/api/contact', express.json(), (req, res) => {
   }));
   return res.json({ ok: true });
 });
+
+// ─── Tradewinds AI proxy ──────────────────────────────────────────────────────
+// Proxies /tradewinds/* to the Tradewinds AI Railway service
+app.use('/tradewinds', createProxyMiddleware({
+  target: 'https://tradewinds-ai-production.up.railway.app',
+  changeOrigin: true,
+  secure: true,
+}));
 
 // ─── Static content ────────────────────────────────────────────────
 // All paths resolved from process.cwd() which is the repo root both in
