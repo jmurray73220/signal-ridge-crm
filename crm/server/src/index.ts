@@ -108,19 +108,36 @@ import https from 'https';
 app.use(/^\/tradewinds(\/.*)?$/, (req: express.Request, res: express.Response) => {
   const target = 'tradewinds-ai-production.up.railway.app';
   const path = req.originalUrl;
+  // Express may have already parsed the body; reconstruct it for forwarding
+  const bodyBuffer = req.body && Object.keys(req.body).length > 0
+    ? Buffer.from(JSON.stringify(req.body), 'utf8')
+    : null;
+  const headers: Record<string, string | string[] | undefined> = {
+    ...req.headers,
+    host: target,
+  };
+  if (bodyBuffer) {
+    headers['content-length'] = String(bodyBuffer.length);
+    headers['content-type'] = 'application/json';
+  }
   const options = {
     hostname: target,
     port: 443,
     path,
     method: req.method,
-    headers: { ...req.headers, host: target },
+    headers,
   };
   const proxy = https.request(options, (proxyRes) => {
     res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
     proxyRes.pipe(res, { end: true });
   });
   proxy.on('error', () => res.status(502).send('Proxy error'));
-  req.pipe(proxy, { end: true });
+  if (bodyBuffer) {
+    proxy.write(bodyBuffer);
+    proxy.end();
+  } else {
+    req.pipe(proxy, { end: true });
+  }
 });
 
 // ─── Static content ────────────────────────────────────────────────
