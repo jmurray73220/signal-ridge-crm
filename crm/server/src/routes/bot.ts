@@ -1,6 +1,19 @@
 import { Router } from 'express';
 import { botAuth } from '../middleware/botAuth';
 import {
+  listBotWorkflowClients,
+  listBotWorkflowTracks,
+  getBotWorkflowTrack,
+  createBotWorkflowTrack,
+  updateBotWorkflowTrack,
+  createBotWorkflowPhase,
+  updateBotWorkflowPhase,
+  createBotWorkflowMilestone,
+  updateBotWorkflowMilestone,
+  createBotWorkflowActionItem,
+  updateBotWorkflowActionItem,
+} from '../controllers/botWorkflowController';
+import {
   getContacts,
   getContact,
   createContact,
@@ -105,5 +118,18 @@ router.delete('/tasks/:id', deleteTask);
 router.get('/initiatives', getBotInitiatives);
 router.get('/initiatives/:id', getBotInitiative);
 router.patch('/initiatives/:id', patchBotInitiative);
+
+// Workflow — clients, tracks, phases, milestones, action items
+router.get('/workflow/clients', listBotWorkflowClients);
+router.get('/workflow/tracks', listBotWorkflowTracks);
+router.get('/workflow/tracks/:id', getBotWorkflowTrack);
+router.post('/workflow/tracks', createBotWorkflowTrack);
+router.put('/workflow/tracks/:id', updateBotWorkflowTrack);
+router.post('/workflow/tracks/:id/phases', createBotWorkflowPhase);
+router.put('/workflow/phases/:id', updateBotWorkflowPhase);
+router.post('/workflow/phases/:id/milestones', createBotWorkflowMilestone);
+router.put('/workflow/milestones/:id', updateBotWorkflowMilestone);
+router.post('/workflow/milestones/:id/action-items', createBotWorkflowActionItem);
+router.put('/workflow/action-items/:id', updateBotWorkflowActionItem);
 
 export default router;
