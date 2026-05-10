@@ -24,7 +24,6 @@ import workflowRoutes from './routes/workflow';
 import bubbaRoutes from './routes/bubba';
 import recycleBinRoutes from './routes/recycleBin';
 import botRoutes from './routes/bot';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import { receiveBookmarkPost, bookmarkletSource } from './controllers/bookmarkletController';
 import { requireAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
@@ -105,18 +104,24 @@ app.post('/api/contact', express.json(), (req, res) => {
 });
 
 // ─── Tradewinds AI proxy ──────────────────────────────────────────────────────
-// Proxies /tradewinds/* to the Tradewinds AI Railway service
-app.use('/tradewinds', createProxyMiddleware({
-  target: 'https://tradewinds-ai-production.up.railway.app',
-  changeOrigin: true,
-  secure: true,
-  on: {
-    proxyReq: (proxyReq, req) => {
-      // Restore /tradewinds prefix stripped by Express before forwarding
-      proxyReq.path = '/tradewinds' + (req.url || '');
-    },
-  },
-}));
+import https from 'https';
+app.use(/^\/tradewinds(\/.*)?$/, (req: express.Request, res: express.Response) => {
+  const target = 'tradewinds-ai-production.up.railway.app';
+  const path = req.originalUrl;
+  const options = {
+    hostname: target,
+    port: 443,
+    path,
+    method: req.method,
+    headers: { ...req.headers, host: target },
+  };
+  const proxy = https.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+  proxy.on('error', () => res.status(502).send('Proxy error'));
+  req.pipe(proxy, { end: true });
+});
 
 // ─── Static content ────────────────────────────────────────────────
 // All paths resolved from process.cwd() which is the repo root both in
