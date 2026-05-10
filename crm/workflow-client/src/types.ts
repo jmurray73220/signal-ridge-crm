@@ -15,6 +15,7 @@ export interface WorkflowClient {
   id: string;
   name: string;
   clientId: string | null;
+  isInternal?: boolean;
   createdAt: string;
   _count?: { tracks: number; sows: number };
 }

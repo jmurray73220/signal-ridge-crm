@@ -93,9 +93,11 @@ export function Dashboard() {
       {activeClient && (
         <div className="mb-6 pb-5 border-b border-border">
           <h1 className="text-3xl font-semibold text-accent tracking-tight">
-            {activeClient.name} Strategic Roadmap
+            {activeClient.isInternal ? `${activeClient.name} — Internal` : `${activeClient.name} Strategic Roadmap`}
           </h1>
-          <p className="text-text-muted text-sm mt-1">Managed by Signal Ridge Strategies</p>
+          <p className="text-text-muted text-sm mt-1">
+            {activeClient.isInternal ? 'Internal Signal Ridge projects' : 'Managed by Signal Ridge Strategies'}
+          </p>
         </div>
       )}
 

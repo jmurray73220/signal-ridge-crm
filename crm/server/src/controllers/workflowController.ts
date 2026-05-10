@@ -19,8 +19,21 @@ A "Master Execution Timeline" track exists for cross-cutting 180-day execution p
 
 // ─── Clients ──────────────────────────────────────────────────────────────
 
+// One-shot seed of the Signal Ridge internal workspace, idempotent. Called
+// from listClients so it lazily creates the row the first time anyone hits
+// the workflow tool after deploy.
+async function ensureSignalRidgeInternalClient(): Promise<void> {
+  const existing = await prisma.workflowClient.findFirst({ where: { isInternal: true } });
+  if (!existing) {
+    await prisma.workflowClient.create({
+      data: { name: 'Signal Ridge', isInternal: true, clientId: null },
+    });
+  }
+}
+
 export async function listClients(req: AuthRequest, res: Response) {
   try {
+    await ensureSignalRidgeInternalClient();
     const isAdmin = req.user!.workflowRole === 'WorkflowAdmin';
     const where = isAdmin ? {} : { id: req.user!.workflowClientId || '' };
     const clients = await prisma.workflowClient.findMany({
@@ -69,11 +82,21 @@ export async function getClient(req: AuthRequest, res: Response) {
 }
 
 export async function createClient(req: AuthRequest, res: Response) {
-  const { name, clientId } = req.body;
+  const { name, clientId, isInternal } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
+  const internal = Boolean(isInternal);
+  // Custom names without a CRM link are only allowed for internal entries —
+  // for everything else we still want WorkflowClient to mirror a CRM client.
+  if (!internal && !clientId) {
+    return res.status(400).json({ error: 'clientId (CRM client) required unless isInternal=true' });
+  }
   try {
     const client = await prisma.workflowClient.create({
-      data: { name, clientId: clientId || null },
+      data: {
+        name,
+        clientId: internal ? null : (clientId || null),
+        isInternal: internal,
+      },
     });
     return res.status(201).json(client);
   } catch (err) {

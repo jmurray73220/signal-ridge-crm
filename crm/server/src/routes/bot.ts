@@ -120,6 +120,7 @@ router.get('/initiatives/:id', getBotInitiative);
 router.patch('/initiatives/:id', patchBotInitiative);
 
 // Workflow — clients, tracks, phases, milestones, action items
+// (Bubba already built a dedicated bot controller; see botWorkflowController.ts.)
 router.get('/workflow/clients', listBotWorkflowClients);
 router.get('/workflow/tracks', listBotWorkflowTracks);
 router.get('/workflow/tracks/:id', getBotWorkflowTrack);

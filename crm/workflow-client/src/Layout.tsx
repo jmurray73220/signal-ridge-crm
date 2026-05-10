@@ -41,9 +41,20 @@ export function Layout() {
                   onChange={e => setSelectedClientId(e.target.value || null)}
                   className="bg-surface border border-border text-sm rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent"
                 >
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {clients.filter(c => c.isInternal).length > 0 && (
+                    <optgroup label="Signal Ridge — Internal">
+                      {clients.filter(c => c.isInternal).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {clients.filter(c => !c.isInternal).length > 0 && (
+                    <optgroup label="Clients">
+                      {clients.filter(c => !c.isInternal).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             )}

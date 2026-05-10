@@ -192,6 +192,8 @@ function AddClientModal({
   const [selectedCrmId, setSelectedCrmId] = useState<string>('');
   const [customName, setCustomName] = useState('');
   const [useCustom, setUseCustom] = useState(false);
+  // Custom-name clients can only be Internal — non-internal workflow clients
+  // must mirror a CRM Client entity to keep the two sides in sync.
   const [creating, setCreating] = useState(false);
 
   const linkedCrmIds = useMemo(
@@ -231,8 +233,10 @@ function AddClientModal({
 
     setCreating(true);
     try {
-      await createClient(name, crmId);
-      toast.success('Workflow client created');
+      // Custom-name path = Internal (Signal Ridge) workspace. CRM-linked
+      // path = regular customer engagement.
+      await createClient(name, { clientId: crmId, isInternal: useCustom });
+      toast.success(useCustom ? 'Internal workspace created' : 'Workflow client created');
       onCreated();
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed');
@@ -283,22 +287,22 @@ function AddClientModal({
               className="text-xs text-accent underline"
               onClick={() => setUseCustom(true)}
             >
-              Or enter a custom name (not linked to the CRM)
+              Or create an internal Signal Ridge workspace (not tied to a CRM client)
             </button>
           </>
         ) : (
           <>
             <div>
-              <label className="label">Client name</label>
+              <label className="label">Internal workspace name</label>
               <input
                 className="input"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                placeholder="e.g. Acme Corp"
+                placeholder="e.g. Signal Ridge Ops, Q3 OKRs"
                 autoFocus
               />
               <p className="text-xs text-text-muted mt-1">
-                This workflow client will not be linked to a CRM entity.
+                Internal workspaces aren't tied to a CRM client. Use them for Signal Ridge projects you want to track in this tool.
               </p>
             </div>
             <button

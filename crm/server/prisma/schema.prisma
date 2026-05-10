@@ -488,6 +488,10 @@ model WorkflowClient {
   id        String   @id @default(uuid())
   name      String
   clientId  String? // Links to CRM Entity.id (soft reference; not FK to avoid coupling)
+  // When true this is an internal Signal Ridge workspace (no CRM client),
+  // not a customer engagement. UI groups these separately and the
+  // AddClient flow lets internal entries be created without a CRM link.
+  isInternal Boolean @default(false)
   createdAt DateTime @default(now())
 
   tracks WorkflowTrack[]

@@ -28,8 +28,12 @@ export async function listCrmClientEntities(): Promise<Array<{ id: string; name:
   const { data } = await api.get('/api/workflow/clients/crm-entities');
   return data;
 }
-export async function createClient(name: string, clientId?: string) {
-  const { data } = await api.post('/api/workflow/clients', { name, clientId });
+export async function createClient(name: string, opts?: { clientId?: string; isInternal?: boolean }) {
+  const { data } = await api.post('/api/workflow/clients', {
+    name,
+    clientId: opts?.clientId,
+    isInternal: opts?.isInternal,
+  });
   return data;
 }
 export interface BackfillResult {
