@@ -110,6 +110,12 @@ app.use('/tradewinds', createProxyMiddleware({
   target: 'https://tradewinds-ai-production.up.railway.app',
   changeOrigin: true,
   secure: true,
+  on: {
+    proxyReq: (proxyReq, req) => {
+      // Restore /tradewinds prefix stripped by Express before forwarding
+      proxyReq.path = '/tradewinds' + (req.url || '');
+    },
+  },
 }));
 
 // ─── Static content ────────────────────────────────────────────────
