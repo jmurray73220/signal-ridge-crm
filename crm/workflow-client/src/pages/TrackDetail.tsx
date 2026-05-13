@@ -50,8 +50,10 @@ export function TrackDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const nav = useNavigate();
-  const isAdmin = user?.workflowRole === 'WorkflowAdmin';
-  const canEditSteps = isAdmin || user?.workflowRole === 'WorkflowEditor';
+  // Editors get the same content-editing affordances as Admins within their
+  // assigned client; backend enforces client scope.
+  const isAdmin = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
+  const canEditSteps = isAdmin;
   const qc = useQueryClient();
   const { data: track, isLoading } = useQuery({
     queryKey: ['track', id],

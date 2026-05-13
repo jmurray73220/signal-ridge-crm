@@ -78,9 +78,11 @@ function fromSow(sow: WorkflowSOW): FormState {
 export function SOWDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const isAdmin = user?.workflowRole === 'WorkflowAdmin';
-  const canComment = isAdmin || user?.workflowRole === 'WorkflowEditor';
-  const canEditChecklist = canComment; // editors can tick drafting items
+  // Editors get the same content-editing affordances as Admins within their
+  // assigned client; backend enforces client scope.
+  const isAdmin = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
+  const canComment = isAdmin;
+  const canEditChecklist = canComment;
   const qc = useQueryClient();
 
   const { data: sow, isLoading } = useQuery<WorkflowSOW>({

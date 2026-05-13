@@ -21,7 +21,7 @@ type View = 'kanban' | 'list';
 export function Dashboard() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const isAdmin = user?.workflowRole === 'WorkflowAdmin';
+  const canEdit = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
   const [view, setView] = useState<View>('kanban');
   const [newTrackOpen, setNewTrackOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -127,7 +127,7 @@ export function Dashboard() {
               <List size={14} /> List
             </button>
           </div>
-          {isAdmin && (
+          {canEdit && (
             <button className="btn-primary flex items-center gap-1" onClick={() => setNewTrackOpen(true)}>
               <Plus size={14} /> Track
             </button>
@@ -138,13 +138,13 @@ export function Dashboard() {
       {tracksQuery.isLoading && <div className="text-text-muted">Loading…</div>}
       {tracksQuery.data && tracksQuery.data.length === 0 && (orphansQuery.data?.length ?? 0) === 0 && (
         <div className="card text-center text-text-muted">
-          No tracks yet.{isAdmin && ' Click "Track" to add one.'}
+          No tracks yet.{canEdit && ' Click "Track" to add one.'}
         </div>
       )}
       {(tracksQuery.data?.length || orphansQuery.data?.length) ? (
         view === 'kanban'
-          ? <Kanban tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={isAdmin} onPromote={promoteOrphan} />
-          : <ListView tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={isAdmin} onPromote={promoteOrphan} />
+          ? <Kanban tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={canEdit} onPromote={promoteOrphan} />
+          : <ListView tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={canEdit} onPromote={promoteOrphan} />
       ) : null}
 
       {newTrackOpen && (

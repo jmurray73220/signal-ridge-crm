@@ -410,6 +410,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
     extractedFields,
   } = req.body;
   if (!workflowClientId || !title) return res.status(400).json({ error: 'workflowClientId and title required' });
+  if (!assertClientAccess(req, workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const isOpp = Boolean(isContractOpportunity);
     const baseData: any = {
@@ -1125,6 +1126,9 @@ export async function createPhase(req: AuthRequest, res: Response) {
   const { trackId, title, description, budget, timeframe, status, assignedTo, sortOrder } = req.body;
   if (!trackId || !title) return res.status(400).json({ error: 'trackId and title required' });
   try {
+    const cid = await clientIdForTrack(trackId);
+    if (!cid) return res.status(404).json({ error: 'Track not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
     const phase = await prisma.workflowPhase.create({
       data: {
         trackId,
@@ -1147,6 +1151,9 @@ export async function updatePhase(req: AuthRequest, res: Response) {
   const { id } = req.params;
   const { title, description, budget, timeframe, status, statusManuallySet, assignedTo, sortOrder } = req.body;
   try {
+    const cid = await clientIdForPhase(id);
+    if (!cid) return res.status(404).json({ error: 'Phase not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
     // Setting a status manually flips the override flag on. Sending
     // statusManuallySet:false alone clears the override (back to auto-derive).
     const data: any = {
@@ -1175,6 +1182,9 @@ export async function updatePhase(req: AuthRequest, res: Response) {
 export async function deletePhase(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const cid = await clientIdForPhase(id);
+    if (!cid) return res.status(404).json({ error: 'Phase not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
     await prisma.workflowPhase.delete({ where: { id } });
     return res.json({ message: 'Deleted' });
   } catch (err) {
@@ -1185,9 +1195,16 @@ export async function deletePhase(req: AuthRequest, res: Response) {
 // ─── Milestones ───────────────────────────────────────────────────────────
 
 /**
- * Resolve the workflowClientId that owns a phase or milestone (via the parent
- * track). Returns null if the row is missing.
+ * Resolve the workflowClientId that owns a track, phase, or milestone (via
+ * the parent track). Returns null if the row is missing.
  */
+async function clientIdForTrack(trackId: string): Promise<string | null> {
+  const t = await prisma.workflowTrack.findUnique({
+    where: { id: trackId },
+    select: { workflowClientId: true },
+  });
+  return t?.workflowClientId ?? null;
+}
 async function clientIdForPhase(phaseId: string): Promise<string | null> {
   const ph = await prisma.workflowPhase.findUnique({
     where: { id: phaseId },
@@ -1303,6 +1320,9 @@ export async function createActionItem(req: AuthRequest, res: Response) {
   const { milestoneId, title, notes, status, assignedTo, dueDate, sortOrder } = req.body;
   if (!milestoneId || !title) return res.status(400).json({ error: 'milestoneId and title required' });
   try {
+    const cid = await clientIdForMilestone(milestoneId);
+    if (!cid) return res.status(404).json({ error: 'Step not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
     const item = await prisma.workflowActionItem.create({
       data: {
         milestoneId,
@@ -1366,6 +1386,9 @@ export async function deleteActionItem(req: AuthRequest, res: Response) {
   try {
     const existing = await prisma.workflowActionItem.findUnique({ where: { id } });
     if (!existing || existing.deletedAt) return res.status(404).json({ error: 'Not found' });
+    const cid = await clientIdForMilestone(existing.milestoneId);
+    if (!cid) return res.status(404).json({ error: 'Step not found' });
+    if (!assertClientAccess(req, cid)) return res.status(403).json({ error: 'Forbidden' });
     await softDelete({
       modelName: 'workflowActionItem',
       entityType: 'WorkflowActionItem',
@@ -1470,6 +1493,7 @@ async function validateTrackForSOW(
 export async function createSOW(req: AuthRequest, res: Response) {
   const { workflowClientId, title, trackId } = req.body;
   if (!workflowClientId || !title) return res.status(400).json({ error: 'workflowClientId and title required' });
+  if (!assertClientAccess(req, workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
   try {
     if (trackId) {
       const err = await validateTrackForSOW(trackId, workflowClientId);

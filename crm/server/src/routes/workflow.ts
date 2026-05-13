@@ -39,28 +39,29 @@ router.post('/clients', requireWorkflowAdmin, ctl.createClient);
 router.put('/clients/:id', requireWorkflowAdmin, ctl.updateClient);
 router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);
 
-// Tracks
+// Tracks — Editors can create/update/delete within their assigned client
+// (controllers enforce client scope via assertClientAccess).
 router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
-router.post('/tracks', requireWorkflowAdmin, ctl.createTrack);
-router.post('/tracks/probe-url', requireWorkflowAdmin, ctl.probeOpportunityUrl);
-router.post('/tracks/extract-preview', requireWorkflowAdmin, ctl.extractPreview);
-router.post('/tracks/:id/extract-from-url', requireWorkflowAdmin, ctl.retryExtractTrackFromUrl);
-router.post('/tracks/:id/extract-from-text', requireWorkflowAdmin, ctl.extractTrackFromText);
-router.put('/tracks/:id', requireWorkflowAdmin, ctl.updateTrack);
-router.delete('/tracks/:id', requireWorkflowAdmin, ctl.deleteTrack);
+router.post('/tracks', requireWorkflowEditor, ctl.createTrack);
+router.post('/tracks/probe-url', requireWorkflowEditor, ctl.probeOpportunityUrl);
+router.post('/tracks/extract-preview', requireWorkflowEditor, ctl.extractPreview);
+router.post('/tracks/:id/extract-from-url', requireWorkflowEditor, ctl.retryExtractTrackFromUrl);
+router.post('/tracks/:id/extract-from-text', requireWorkflowEditor, ctl.extractTrackFromText);
+router.put('/tracks/:id', requireWorkflowEditor, ctl.updateTrack);
+router.delete('/tracks/:id', requireWorkflowEditor, ctl.deleteTrack);
 // Singular alias per spec
-router.delete('/track/:id', requireWorkflowAdmin, ctl.deleteTrack);
+router.delete('/track/:id', requireWorkflowEditor, ctl.deleteTrack);
 
 // Orphan CRM initiatives — visible in workflow Dashboard so initiatives
 // created directly in the CRM aren't invisible here.
 router.get('/orphan-initiatives', ctl.listOrphanInitiatives);
-router.post('/orphan-initiatives/:initiativeId/promote', requireWorkflowAdmin, ctl.promoteInitiativeToTrack);
+router.post('/orphan-initiatives/:initiativeId/promote', requireWorkflowEditor, ctl.promoteInitiativeToTrack);
 
 // Phases
-router.post('/phases', requireWorkflowAdmin, ctl.createPhase);
-router.put('/phases/:id', requireWorkflowAdmin, ctl.updatePhase);
-router.delete('/phases/:id', requireWorkflowAdmin, ctl.deletePhase);
+router.post('/phases', requireWorkflowEditor, ctl.createPhase);
+router.put('/phases/:id', requireWorkflowEditor, ctl.updatePhase);
+router.delete('/phases/:id', requireWorkflowEditor, ctl.deletePhase);
 
 // Phase attachments + links — files and important URLs scoped to a phase.
 router.post('/phases/:phaseId/attachments', requireWorkflowEditor, upload.single('file'), uploadPhaseAttachment);
@@ -76,24 +77,24 @@ router.post('/milestones', requireWorkflowEditor, ctl.createMilestone);
 router.put('/milestones/:id', requireWorkflowEditor, ctl.updateMilestone);
 router.delete('/milestones/:id', requireWorkflowEditor, ctl.deleteMilestone);
 
-// Action items — Editors can update status/notes/assignedTo; Admin can do everything
+// Action items — Editors can create/update/delete within their client.
 router.get('/action-items/:id', ctl.getActionItem);
-router.post('/action-items', requireWorkflowAdmin, ctl.createActionItem);
+router.post('/action-items', requireWorkflowEditor, ctl.createActionItem);
 router.put('/action-items/:id', requireWorkflowEditor, ctl.updateActionItem);
-router.delete('/action-items/:id', requireWorkflowAdmin, ctl.deleteActionItem);
+router.delete('/action-items/:id', requireWorkflowEditor, ctl.deleteActionItem);
 
 // SOWs
 router.get('/sows', ctl.listSOWs);
 // Scope-overlap check across existing SOWs for the client (warn-only).
 // Must be declared before /sows/:id so Express doesn't treat "check-overlap" as an id.
-router.post('/sows/check-overlap', requireWorkflowAdmin, ctl.checkSOWOverlap);
+router.post('/sows/check-overlap', requireWorkflowEditor, ctl.checkSOWOverlap);
 router.get('/sows/:id', ctl.getSOW);
-router.post('/sows', requireWorkflowAdmin, ctl.createSOW);
-router.put('/sows/:id', requireWorkflowAdmin, ctl.updateSOW);
-router.delete('/sows/:id', requireWorkflowAdmin, ctl.deleteSOW);
+router.post('/sows', requireWorkflowEditor, ctl.createSOW);
+router.put('/sows/:id', requireWorkflowEditor, ctl.updateSOW);
+router.delete('/sows/:id', requireWorkflowEditor, ctl.deleteSOW);
 
 // AI reconciliation when SOW is integrated into a track
-router.post('/sow/:id/integrate/:trackId', requireWorkflowAdmin, ctl.integrateSOWWithTrack);
+router.post('/sow/:id/integrate/:trackId', requireWorkflowEditor, ctl.integrateSOWWithTrack);
 
 // Comments — Editors & Admins can post; Viewers read-only
 router.post('/comments', requireWorkflowEditor, ctl.createComment);

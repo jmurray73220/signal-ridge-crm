@@ -20,7 +20,7 @@ type Stage = 'input' | 'fetching' | 'paste' | 'extracting-paste' | 'creating';
 
 export function QuickOpportunity() {
   const { user } = useAuth();
-  const isAdmin = user?.workflowRole === 'WorkflowAdmin';
+  const canEdit = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
   const { clients, selectedClientId } = useClientContext();
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -42,7 +42,7 @@ export function QuickOpportunity() {
     }
   }, [open, selectedClientId, clients]);
 
-  if (!isAdmin) return null;
+  if (!canEdit) return null;
 
   function close() {
     setOpen(false);
