@@ -95,18 +95,36 @@ export function TrackDetail() {
   if (isLoading) return <div className="text-text-muted">Loading…</div>;
   if (!track) return <div className="text-text-muted">Not found</div>;
 
-  async function submitPrompt(title: string) {
+  async function submitPrompt(fields: { title: string; assignedTo: string | null; dueDate: string | null }) {
     if (!prompt) return;
     setSaving(true);
     try {
+      const { title, assignedTo, dueDate } = fields;
       if (prompt.kind === 'phase') {
-        await createPhase({ trackId: track!.id, title, sortOrder: track!.phases.length });
+        await createPhase({
+          trackId: track!.id,
+          title,
+          sortOrder: track!.phases.length,
+          ...(assignedTo && { assignedTo }),
+        });
         toast.success('Phase added');
       } else if (prompt.kind === 'step') {
-        await createMilestone({ phaseId: prompt.phaseId, title, sortOrder: prompt.sortOrder });
+        await createMilestone({
+          phaseId: prompt.phaseId,
+          title,
+          sortOrder: prompt.sortOrder,
+          ...(assignedTo && { assignedTo }),
+          ...(dueDate && { dueDate }),
+        });
         toast.success('Step added');
       } else if (prompt.kind === 'action') {
-        await createActionItem({ milestoneId: prompt.milestoneId, title, sortOrder: prompt.sortOrder });
+        await createActionItem({
+          milestoneId: prompt.milestoneId,
+          title,
+          sortOrder: prompt.sortOrder,
+          ...(assignedTo && { assignedTo }),
+          ...(dueDate && { dueDate }),
+        });
         toast.success('Action added');
       }
       qc.invalidateQueries({ queryKey: ['track', id] });
@@ -455,11 +473,10 @@ export function TrackDetail() {
       </div>
 
       {prompt && (
-        <PromptModal
+        <ItemCreateModal
           title={promptTitle}
-          label="Title"
-          placeholder="Short descriptive title"
-          submitLabel="Create"
+          showDueDate={prompt.kind !== 'phase'}
+          workflowClientId={track.workflowClientId}
           loading={saving}
           onClose={() => setPrompt(null)}
           onSubmit={submitPrompt}
@@ -999,6 +1016,90 @@ function AssigneePicker({
         </optgroup>
       )}
     </select>
+  );
+}
+
+function ItemCreateModal({
+  title,
+  showDueDate,
+  workflowClientId,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  title: string;
+  showDueDate: boolean;
+  workflowClientId: string;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (fields: { title: string; assignedTo: string | null; dueDate: string | null }) => void;
+}) {
+  const [form, setForm] = useState<{ title: string; assignedTo: string | null; dueDate: string }>({
+    title: '',
+    assignedTo: null,
+    dueDate: '',
+  });
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const trimmed = form.title.trim();
+          if (!trimmed) return;
+          onSubmit({
+            title: trimmed,
+            assignedTo: form.assignedTo,
+            dueDate: form.dueDate ? form.dueDate : null,
+          });
+        }}
+        className="space-y-3"
+      >
+        <div>
+          <label className="label">Title</label>
+          <input
+            className="input"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="Short descriptive title"
+            autoFocus
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className={showDueDate ? 'grid grid-cols-2 gap-3' : ''}>
+          <div>
+            <label className="label">Assigned to</label>
+            <AssigneePicker
+              workflowClientId={workflowClientId}
+              value={form.assignedTo}
+              onChange={(v) => setForm((f) => ({ ...f, assignedTo: v }))}
+              disabled={loading}
+            />
+          </div>
+          {showDueDate && (
+            <div>
+              <label className="label">Due date</label>
+              <input
+                type="date"
+                className="input"
+                value={form.dueDate}
+                onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                disabled={loading}
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={loading || !form.title.trim()}>
+            {loading ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
