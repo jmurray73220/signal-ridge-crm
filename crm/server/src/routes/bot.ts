@@ -58,6 +58,12 @@ import {
   getBotInitiative,
   patchBotInitiative,
 } from '../controllers/initiativesController';
+import {
+  getReminders,
+  createReminder,
+  updateReminder,
+  deleteReminder,
+} from '../controllers/remindersController';
 
 const router = Router();
 
@@ -113,6 +119,12 @@ router.get('/tasks', getTasks);
 router.post('/tasks', createTask);
 router.put('/tasks/:id', updateTask);
 router.delete('/tasks/:id', deleteTask);
+
+// Reminders — time-based (remindAt), distinct from date-only tasks
+router.get('/reminders', getReminders);
+router.post('/reminders', createReminder);
+router.put('/reminders/:id', updateReminder);
+router.delete('/reminders/:id', deleteReminder);
 
 // Initiatives — read-only list/detail + whitelisted PATCH (status, description)
 router.get('/initiatives', getBotInitiatives);
