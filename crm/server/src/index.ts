@@ -128,12 +128,12 @@ app.use(/^\/tradewinds(\/.*)?$/, (req: express.Request, res: express.Response) =
     headers,
   };
   const proxy = https.request(options, (proxyRes) => {
-    // Rewrite any Railway internal URLs in the Location header so the browser
-    // always stays on the custom domain (signalridgestrategies.com).
-    const responseHeaders = { ...proxyRes.headers };
-    if (responseHeaders.location) {
-      responseHeaders.location = String(responseHeaders.location)
-        .replaceAll(target, req.hostname);
+    // Rewrite Railway internal URLs in Location headers so the browser
+    // always stays on signalridgestrategies.com (not the Railway hostname).
+    const responseHeaders: Record<string, string | string[] | number | undefined> = { ...proxyRes.headers };
+    if (typeof responseHeaders.location === 'string') {
+      responseHeaders.location = responseHeaders.location
+        .replace(new RegExp(target.replace(/\./g, '\\.'), 'g'), 'www.signalridgestrategies.com');
     }
     res.writeHead(proxyRes.statusCode || 502, responseHeaders);
     proxyRes.pipe(res, { end: true });
