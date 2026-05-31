@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LayoutGrid, List, Plus, ArrowUpRight } from 'lucide-react';
+import { LayoutGrid, List, Plus, ArrowUpRight, ChevronDown, ChevronRight, CheckCircle2, Archive, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   listTracks,
@@ -142,9 +142,13 @@ export function Dashboard() {
         </div>
       )}
       {(tracksQuery.data?.length || orphansQuery.data?.length) ? (
-        view === 'kanban'
-          ? <Kanban tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={canEdit} onPromote={promoteOrphan} />
-          : <ListView tracks={tracksQuery.data || []} orphans={orphansQuery.data || []} canPromote={canEdit} onPromote={promoteOrphan} />
+        <StatusSections
+          tracks={tracksQuery.data || []}
+          orphans={orphansQuery.data || []}
+          view={view}
+          canPromote={canEdit}
+          onPromote={promoteOrphan}
+        />
       ) : null}
 
       {newTrackOpen && (
@@ -154,6 +158,109 @@ export function Dashboard() {
           onSubmit={submitTrack}
         />
       )}
+    </div>
+  );
+}
+
+// Buckets that drive the dashboard sections. Active + OnHold roll up into
+// "In Progress" because the user reads them together when scanning the board.
+type Bucket = 'inProgress' | 'completed' | 'archived';
+
+function bucketFor(status: WorkflowTrack['status']): Bucket {
+  if (status === 'Completed') return 'completed';
+  if (status === 'Archived') return 'archived';
+  return 'inProgress';
+}
+
+function StatusSections({
+  tracks,
+  orphans,
+  view,
+  canPromote,
+  onPromote,
+}: {
+  tracks: WorkflowTrack[];
+  orphans: OrphanInitiative[];
+  view: View;
+  canPromote: boolean;
+  onPromote: (id: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const g: Record<Bucket, WorkflowTrack[]> = { inProgress: [], completed: [], archived: [] };
+    for (const t of tracks) g[bucketFor(t.status)].push(t);
+    return g;
+  }, [tracks]);
+
+  return (
+    <div className="space-y-6">
+      <Section
+        title="In Progress"
+        count={grouped.inProgress.length + orphans.length}
+        defaultOpen
+      >
+        {view === 'kanban'
+          ? <Kanban tracks={grouped.inProgress} orphans={orphans} canPromote={canPromote} onPromote={onPromote} />
+          : <ListView tracks={grouped.inProgress} orphans={orphans} canPromote={canPromote} onPromote={onPromote} />}
+      </Section>
+
+      {grouped.completed.length > 0 && (
+        <Section
+          title="Completed"
+          count={grouped.completed.length}
+          icon={<CheckCircle2 size={14} className="text-status-green" />}
+          defaultOpen={false}
+        >
+          {view === 'kanban'
+            ? <Kanban tracks={grouped.completed} orphans={[]} canPromote={false} onPromote={onPromote} />
+            : <ListView tracks={grouped.completed} orphans={[]} canPromote={false} onPromote={onPromote} />}
+        </Section>
+      )}
+
+      {grouped.archived.length > 0 && (
+        <Section
+          title="Archived"
+          count={grouped.archived.length}
+          icon={<Archive size={14} className="text-text-muted" />}
+          defaultOpen={false}
+        >
+          {view === 'kanban'
+            ? <Kanban tracks={grouped.archived} orphans={[]} canPromote={false} onPromote={onPromote} />
+            : <ListView tracks={grouped.archived} orphans={[]} canPromote={false} onPromote={onPromote} />}
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  count,
+  icon,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  count: number;
+  icon?: React.ReactNode;
+  defaultOpen: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (count === 0) return null;
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 mb-3 text-left group"
+      >
+        {open ? <ChevronDown size={16} className="text-text-muted" /> : <ChevronRight size={16} className="text-text-muted" />}
+        {icon}
+        <span className="text-sm font-semibold uppercase tracking-wider text-text-muted group-hover:text-accent">
+          {title}
+        </span>
+        <span className="text-xs text-text-muted">({count})</span>
+      </button>
+      {open && children}
     </div>
   );
 }
@@ -169,8 +276,6 @@ function Kanban({
   canPromote: boolean;
   onPromote: (id: string) => void;
 }) {
-  // Multi-row responsive grid — columns wrap onto new rows so the page
-  // scrolls vertically instead of one wide horizontal scroll bar.
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-4">
       {tracks.map((t) => (
@@ -246,6 +351,7 @@ function OrphanColumn({
 
 function TrackColumn({ track }: { track: WorkflowTrack }) {
   const stats = useMemo(() => summarize(track), [track]);
+  const openFollowups = (track as any).openCrmFollowups as number | undefined;
   return (
     <div className="bg-surface border border-border rounded-lg flex flex-col">
       <div className="p-4 border-b border-border">
@@ -266,20 +372,22 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
         {track.description && (
           <p className="text-xs text-text-muted mt-1 line-clamp-3">{track.description}</p>
         )}
-        <div className="flex gap-2 mt-3 text-xs text-text-muted">
-          <span>{stats.phases} phases</span>
-          <span>·</span>
+        <div className="flex gap-2 mt-3 text-xs text-text-muted items-center flex-wrap">
           <span>{stats.milestones} steps</span>
           <span>·</span>
-          <span>{stats.items} actions</span>
+          <span>{stats.done}/{stats.items} done</span>
+          {openFollowups ? (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1 text-accent" title="Open CRM tasks & reminders on this track's initiative">
+                <Bell size={11} /> {openFollowups} follow-up{openFollowups === 1 ? '' : 's'}
+              </span>
+            </>
+          ) : null}
         </div>
-        <div className="mt-3 h-1.5 bg-bg-deep rounded overflow-hidden">
-          <div
-            className="h-full bg-accent"
-            style={{ width: `${stats.pct}%` }}
-          />
-        </div>
-        <div className="text-xs text-text-muted mt-1">{stats.done}/{stats.items} done</div>
+        {stats.phases > 0 && (
+          <PhasePipeline phases={track.phases} className="mt-3" />
+        )}
       </div>
       <div className="p-3 space-y-2 overflow-y-auto max-h-[500px]">
         {track.phases.flatMap((ph) =>
@@ -291,6 +399,51 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
         ).slice(0, 10)}
         {stats.items === 0 && <div className="text-text-muted text-xs">No action items</div>}
       </div>
+    </div>
+  );
+}
+
+// Compact pipeline that shows where the track sits across its phases. The
+// current phase (first InProgress, or first non-Completed) gets the accent
+// color; completed phases are dimmed-green; not-started are muted.
+function PhasePipeline({
+  phases,
+  className,
+}: {
+  phases: WorkflowTrack['phases'];
+  className?: string;
+}) {
+  const currentIdx = (() => {
+    const ip = phases.findIndex(p => p.status === 'InProgress');
+    if (ip !== -1) return ip;
+    const next = phases.findIndex(p => p.status !== 'Completed');
+    return next === -1 ? phases.length - 1 : next;
+  })();
+  return (
+    <div className={`flex gap-1 ${className || ''}`}>
+      {phases.map((p, i) => {
+        const isCurrent = i === currentIdx && p.status !== 'Completed';
+        const isDone = p.status === 'Completed';
+        const isBlocked = p.status === 'Blocked';
+        const bg = isBlocked
+          ? '#5a2424'
+          : isDone
+          ? '#1f4a3a'
+          : isCurrent
+          ? 'var(--accent, #2f81f7)'
+          : '#1c2638';
+        const color = isCurrent ? '#fff' : isDone ? '#7ed4a8' : isBlocked ? '#ffb4b4' : '#8b949e';
+        return (
+          <div
+            key={p.id}
+            className="flex-1 min-w-0 px-1.5 py-1 rounded text-[10px] uppercase tracking-wider font-medium truncate text-center"
+            style={{ background: bg, color }}
+            title={`${p.title} — ${p.status}`}
+          >
+            {p.title}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -328,14 +481,15 @@ function ListView({
     <div className="space-y-3">
       {tracks.map((t) => {
         const s = summarize(t);
+        const openFollowups = (t as any).openCrmFollowups as number | undefined;
         return (
           <Link
             key={t.id}
             to={`/tracks/${t.id}`}
             className="block card-hover"
           >
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
                 {t.isContractOpportunity && (
                   <div className="mb-0.5">
                     <FundingOppTag />
@@ -343,20 +497,24 @@ function ListView({
                 )}
                 <div className="font-semibold text-accent">{t.title}</div>
                 {t.description && <p className="text-sm text-text-muted mt-1">{t.description}</p>}
-                <div className="text-xs text-text-muted mt-2">
-                  {s.phases} phases · {s.milestones} steps · {s.done}/{s.items} done
+                <div className="text-xs text-text-muted mt-2 flex items-center gap-2 flex-wrap">
+                  <span>{s.milestones} steps</span>
+                  <span>·</span>
+                  <span>{s.done}/{s.items} done</span>
+                  {openFollowups ? (
+                    <>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1 text-accent">
+                        <Bell size={11} /> {openFollowups} follow-up{openFollowups === 1 ? '' : 's'}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
+                {s.phases > 0 && <PhasePipeline phases={t.phases} className="mt-2 max-w-xl" />}
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col items-end gap-1">
-                  {t.fundingVehicle && <span className="badge badge-gold">{t.fundingVehicle}</span>}
-                  {t.priority && <PriorityBadge priority={t.priority} />}
-                </div>
-                <div className="w-32">
-                  <div className="h-1.5 bg-bg-deep rounded overflow-hidden">
-                    <div className="h-full bg-accent" style={{ width: `${s.pct}%` }} />
-                  </div>
-                </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                {t.fundingVehicle && <span className="badge badge-gold">{t.fundingVehicle}</span>}
+                {t.priority && <PriorityBadge priority={t.priority} />}
               </div>
             </div>
           </Link>

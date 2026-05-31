@@ -158,6 +158,37 @@ export async function getTrack(id: string) {
   const { data } = await api.get(`/api/workflow/tracks/${id}`);
   return data;
 }
+
+export interface CrmFollowupTask {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  completed: boolean;
+  contactId: string | null;
+  entityId: string | null;
+  initiativeId: string | null;
+  contact: { id: string; firstName: string; lastName: string } | null;
+}
+export interface CrmFollowupReminder {
+  id: string;
+  title: string;
+  notes: string | null;
+  remindAt: string;
+  completed: boolean;
+  contactId: string | null;
+  entityId: string | null;
+  initiativeId: string | null;
+  contact: { id: string; firstName: string; lastName: string } | null;
+}
+export interface TrackCrmFollowups {
+  initiativeId: string | null;
+  tasks: CrmFollowupTask[];
+  reminders: CrmFollowupReminder[];
+}
+export async function getTrackCrmFollowups(trackId: string): Promise<TrackCrmFollowups> {
+  const { data } = await api.get(`/api/workflow/tracks/${trackId}/crm-followups`);
+  return data;
+}
 export async function deleteTrack(id: string) {
   // Use the singular alias per spec — server accepts both paths
   await api.delete(`/api/workflow/track/${id}`);
@@ -221,6 +252,9 @@ export async function createActionItem(body: Record<string, unknown>) {
 export async function updateActionItem(id: string, body: Record<string, unknown>) {
   const { data } = await api.put(`/api/workflow/action-items/${id}`, body);
   return data;
+}
+export async function deleteActionItem(id: string) {
+  await api.delete(`/api/workflow/action-items/${id}`);
 }
 
 // SOWs

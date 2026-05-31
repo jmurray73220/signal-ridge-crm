@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, ArrowLeft, Trash2, Pencil, FileText, ArrowRight, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, ArrowLeft, Trash2, Pencil, FileText, ArrowRight, RotateCcw, Eye, EyeOff, CheckCircle2, Archive, RefreshCw, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   api,
@@ -17,10 +17,14 @@ import {
   updateMilestone,
   deleteMilestone,
   updateActionItem,
+  deleteActionItem,
   retryExtractTrack,
   extractTrackFromText,
   listAssignees,
+  getTrackCrmFollowups,
   type Assignee,
+  type CrmFollowupTask,
+  type CrmFollowupReminder,
 } from '../api';
 import type {
   WorkflowTrack,
@@ -80,6 +84,22 @@ export function TrackDetail() {
   const [stepDelete, setStepDelete] = useState<WorkflowMilestone | null>(null);
   const [stepSaving, setStepSaving] = useState(false);
   const [stepDeleting, setStepDeleting] = useState(false);
+  const [actionDelete, setActionDelete] = useState<WorkflowActionItem | null>(null);
+  const [actionDeleting, setActionDeleting] = useState(false);
+  // Hide-done preference is per-user-per-browser, not server state — survives
+  // page reloads but doesn't sync across devices. Default: hide done actions
+  // so day-to-day work isn't drowned out by completed history.
+  const [hideDone, setHideDone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem('workflow.hideDone');
+    return stored === null ? true : stored === '1';
+  });
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('workflow.hideDone', hideDone ? '1' : '0');
+    }
+  }, [hideDone]);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   useEffect(() => {
     if (track) {
@@ -266,6 +286,21 @@ export function TrackDetail() {
     }
   }
 
+  async function handleDeleteAction() {
+    if (!actionDelete) return;
+    setActionDeleting(true);
+    try {
+      await deleteActionItem(actionDelete.id);
+      toast.success('Action moved to recycle bin');
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      setActionDelete(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setActionDeleting(false);
+    }
+  }
+
   async function savePhase(form: { title: string; description: string; budget: string; timeframe: string; status: PhaseStatus; assignedTo: string | null }) {
     if (!phaseEdit) return;
     setPhaseSaving(true);
@@ -300,6 +335,26 @@ export function TrackDetail() {
       toast.error(err?.response?.data?.error || 'Failed');
     } finally {
       setPhaseDeleting(false);
+    }
+  }
+
+  async function setTrackStatus(status: 'Active' | 'OnHold' | 'Completed' | 'Archived') {
+    if (!track) return;
+    setStatusBusy(true);
+    try {
+      await updateTrack(track.id, { status });
+      const label =
+        status === 'Completed' ? 'Marked complete'
+        : status === 'Archived' ? 'Archived'
+        : status === 'OnHold' ? 'On hold'
+        : 'Reactivated';
+      toast.success(label);
+      qc.invalidateQueries({ queryKey: ['track', id] });
+      qc.invalidateQueries({ queryKey: ['tracks'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+    } finally {
+      setStatusBusy(false);
     }
   }
 
@@ -367,23 +422,76 @@ export function TrackDetail() {
             <p className="text-text-muted text-sm mt-2 max-w-3xl">{track.description}</p>
           )}
         </div>
-        {isAdmin && (
+        <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <button className="btn-secondary flex items-center gap-1" onClick={() => setEditOpen(true)}>
-              <Pencil size={14} /> Edit
-            </button>
-            <button className="btn-primary flex items-center gap-1" onClick={() => setPrompt({ kind: 'phase' })}>
-              <Plus size={14} /> Phase
-            </button>
+            <StatusBadge status={track.status} />
             <button
-              className="btn-secondary flex items-center gap-1 hover:border-status-red hover:text-status-red"
-              onClick={() => setDeleteOpen(true)}
-              title="Delete track"
+              onClick={() => setHideDone(v => !v)}
+              className="btn-ghost inline-flex items-center gap-1 text-xs"
+              title={hideDone ? 'Show completed action items' : 'Hide completed action items'}
             >
-              <Trash2 size={14} /> Delete
+              {hideDone ? <EyeOff size={12} /> : <Eye size={12} />}
+              {hideDone ? 'Done hidden' : 'Done shown'}
             </button>
           </div>
-        )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {track.status === 'Active' && (
+                <button
+                  className="btn-secondary flex items-center gap-1 text-xs"
+                  disabled={statusBusy}
+                  onClick={() => setTrackStatus('Completed')}
+                  title="Mark this track as completed"
+                >
+                  <CheckCircle2 size={12} /> Mark complete
+                </button>
+              )}
+              {track.status === 'Completed' && (
+                <>
+                  <button
+                    className="btn-secondary flex items-center gap-1 text-xs"
+                    disabled={statusBusy}
+                    onClick={() => setTrackStatus('Archived')}
+                    title="Archive this completed track"
+                  >
+                    <Archive size={12} /> Archive
+                  </button>
+                  <button
+                    className="btn-ghost flex items-center gap-1 text-xs"
+                    disabled={statusBusy}
+                    onClick={() => setTrackStatus('Active')}
+                    title="Reopen this track"
+                  >
+                    <RefreshCw size={12} /> Reopen
+                  </button>
+                </>
+              )}
+              {track.status === 'Archived' && (
+                <button
+                  className="btn-secondary flex items-center gap-1 text-xs"
+                  disabled={statusBusy}
+                  onClick={() => setTrackStatus('Active')}
+                  title="Restore from archive"
+                >
+                  <RefreshCw size={12} /> Restore
+                </button>
+              )}
+              <button className="btn-secondary flex items-center gap-1" onClick={() => setEditOpen(true)}>
+                <Pencil size={14} /> Edit
+              </button>
+              <button className="btn-primary flex items-center gap-1" onClick={() => setPrompt({ kind: 'phase' })}>
+                <Plus size={14} /> Phase
+              </button>
+              <button
+                className="btn-secondary flex items-center gap-1 hover:border-status-red hover:text-status-red"
+                onClick={() => setDeleteOpen(true)}
+                title="Delete track"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {track.isContractOpportunity && (
@@ -431,6 +539,8 @@ export function TrackDetail() {
         ) : null}
       </div>
 
+      <CrmFollowupsPanel trackId={track.id} />
+
       <div className="space-y-4">
         {track.phases.map((phase) => (
           <PhaseBlock
@@ -451,6 +561,7 @@ export function TrackDetail() {
             onEditStep={setStepEdit}
             onDeleteStep={setStepDelete}
             onActionStatusChange={quickUpdateActionStatus}
+            onDeleteAction={setActionDelete}
             onAddAction={(m) =>
               setPrompt({
                 kind: 'action',
@@ -465,6 +576,7 @@ export function TrackDetail() {
             onStepStatusClear={clearStepStatusOverride}
             trackId={track.id}
             canUploadFiles={canEditSteps}
+            hideDone={hideDone}
           />
         ))}
         {track.phases.length === 0 && (
@@ -574,6 +686,25 @@ export function TrackDetail() {
           }
           onConfirm={handleDeleteStep}
           onCancel={() => setStepDelete(null)}
+        />
+      )}
+
+      {actionDelete && (
+        <ConfirmModal
+          title="Delete action"
+          danger
+          confirmLabel="Delete action"
+          loading={actionDeleting}
+          message={
+            <>
+              Delete <span className="text-accent font-medium">{actionDelete.title}</span>?
+              <br />
+              <br />
+              It will be moved to the recycle bin and can be restored by an admin.
+            </>
+          }
+          onConfirm={handleDeleteAction}
+          onCancel={() => setActionDelete(null)}
         />
       )}
 
@@ -757,6 +888,7 @@ function PhaseBlock({
   onEditStep,
   onDeleteStep,
   onActionStatusChange,
+  onDeleteAction,
   onAddAction,
   onPhaseStatusChange,
   onPhaseStatusClear,
@@ -764,6 +896,7 @@ function PhaseBlock({
   onStepStatusClear,
   trackId,
   canUploadFiles,
+  hideDone,
 }: {
   phase: WorkflowPhase;
   isAdmin: boolean;
@@ -774,6 +907,7 @@ function PhaseBlock({
   onEditStep: (m: WorkflowMilestone) => void;
   onDeleteStep: (m: WorkflowMilestone) => void;
   onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
+  onDeleteAction: (ai: WorkflowActionItem) => void;
   onAddAction: (m: WorkflowMilestone) => void;
   onPhaseStatusChange: (phaseId: string, status: string) => void;
   onPhaseStatusClear: (phaseId: string) => void;
@@ -781,6 +915,7 @@ function PhaseBlock({
   onStepStatusClear: (milestoneId: string) => void;
   trackId: string;
   canUploadFiles: boolean;
+  hideDone: boolean;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -864,8 +999,10 @@ function PhaseBlock({
                 onDelete={() => onDeleteStep(m)}
                 onAddAction={() => onAddAction(m)}
                 onActionStatusChange={onActionStatusChange}
+                onDeleteAction={onDeleteAction}
                 onStatusChange={(s) => onStepStatusChange(m.id, s)}
                 onStatusClear={() => onStepStatusClear(m.id)}
+                hideDone={hideDone}
               />
             ))}
             {phase.milestones.length === 0 && (
@@ -885,8 +1022,10 @@ function MilestoneBlock({
   onDelete,
   onAddAction,
   onActionStatusChange,
+  onDeleteAction,
   onStatusChange,
   onStatusClear,
+  hideDone,
 }: {
   milestone: WorkflowMilestone;
   canEdit: boolean;
@@ -894,10 +1033,16 @@ function MilestoneBlock({
   onDelete: () => void;
   onAddAction: () => void;
   onActionStatusChange: (actionId: string, s: ActionItemStatus) => void;
+  onDeleteAction: (ai: WorkflowActionItem) => void;
   onStatusChange: (status: string) => void;
   onStatusClear: () => void;
+  hideDone: boolean;
 }) {
   const [open, setOpen] = useState(true);
+  const [showDoneOverride, setShowDoneOverride] = useState(false);
+  const doneItems = milestone.actionItems.filter(a => a.status === 'Done');
+  const openItems = milestone.actionItems.filter(a => a.status !== 'Done');
+  const visibleDone = !hideDone || showDoneOverride;
   return (
     <div className="bg-bg-deep border border-border-soft rounded p-3">
       <div className="flex items-start justify-between gap-3">
@@ -953,14 +1098,35 @@ function MilestoneBlock({
       </div>
       {open && (
         <div className="mt-3 space-y-1.5 pl-6">
-          {milestone.actionItems.map((ai) => (
+          {openItems.map((ai) => (
             <ActionRow
               key={ai.id}
               item={ai}
               canEdit={canEdit}
               onStatusChange={(s) => onActionStatusChange(ai.id, s)}
+              onDelete={() => onDeleteAction(ai)}
             />
           ))}
+          {visibleDone && doneItems.map((ai) => (
+            <ActionRow
+              key={ai.id}
+              item={ai}
+              canEdit={canEdit}
+              onStatusChange={(s) => onActionStatusChange(ai.id, s)}
+              onDelete={() => onDeleteAction(ai)}
+            />
+          ))}
+          {doneItems.length > 0 && hideDone && (
+            <button
+              type="button"
+              onClick={() => setShowDoneOverride(v => !v)}
+              className="text-xs text-text-muted hover:text-accent inline-flex items-center gap-1 mt-1"
+            >
+              {showDoneOverride
+                ? <><EyeOff size={11} /> Hide {doneItems.length} done</>
+                : <><Eye size={11} /> Show {doneItems.length} done</>}
+            </button>
+          )}
           {milestone.actionItems.length === 0 && (
             <div className="text-text-muted text-xs italic">No action items</div>
           )}
@@ -1288,10 +1454,12 @@ function ActionRow({
   item,
   canEdit,
   onStatusChange,
+  onDelete,
 }: {
   item: WorkflowActionItem;
   canEdit: boolean;
   onStatusChange: (s: ActionItemStatus) => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="flex items-start justify-between gap-3 p-2 rounded hover:bg-surface-alt border border-transparent hover:border-border">
@@ -1306,7 +1474,17 @@ function ActionRow({
         </div>
       </Link>
       {canEdit ? (
-        <StatusSelect value={item.status} options={ACTION_STATUSES} onChange={onStatusChange} />
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusSelect value={item.status} options={ACTION_STATUSES} onChange={onStatusChange} />
+          <button
+            onClick={onDelete}
+            className="btn-ghost p-1 rounded hover:text-status-red"
+            title="Delete action"
+            aria-label="Delete action"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
       ) : (
         <StatusBadge status={item.status} />
       )}
@@ -1646,6 +1824,142 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <div className="text-xs text-text-muted uppercase tracking-wider">{label}</div>
       <div className="text-sm text-text-primary mt-0.5">{children}</div>
+    </div>
+  );
+}
+
+// CRM tasks + reminders attached to this track's mirrored Initiative.
+// Read-only — editing happens in the CRM. Hidden when the track has no
+// initiativeId (e.g. orphan-promoted track that hasn't synced yet).
+function CrmFollowupsPanel({ trackId }: { trackId: string }) {
+  const [open, setOpen] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['track-crm-followups', trackId],
+    queryFn: () => getTrackCrmFollowups(trackId),
+  });
+
+  if (isLoading || !data || !data.initiativeId) return null;
+
+  const openTasks = data.tasks.filter(t => !t.completed);
+  const doneTasks = data.tasks.filter(t => t.completed);
+  const openReminders = data.reminders.filter(r => !r.completed);
+  const doneReminders = data.reminders.filter(r => r.completed);
+  const totalOpen = openTasks.length + openReminders.length;
+  const totalDone = doneTasks.length + doneReminders.length;
+
+  // The CRM client is mounted at /crm/ on the same origin (see vite configs),
+  // so absolute paths jump to it directly. Initiative detail is the canonical
+  // place to view + edit tasks/reminders for an initiative.
+  const initiativeUrl = `/crm/initiatives/${data.initiativeId}`;
+
+  return (
+    <div className="card mb-6" style={{ background: '#0f1a2e', border: '1px solid #1f3556' }}>
+      <button onClick={() => setOpen(o => !o)} className="flex items-center justify-between w-full text-left">
+        <div className="flex items-center gap-2">
+          <Bell size={14} className="text-accent" />
+          <span className="text-sm font-semibold">CRM follow-ups</span>
+          <span className="text-xs text-text-muted">
+            {totalOpen} open{totalDone > 0 && ` · ${totalDone} done`}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <a
+            href={initiativeUrl}
+            onClick={e => e.stopPropagation()}
+            className="text-xs text-accent hover:underline inline-flex items-center gap-1"
+            title="Open the linked Initiative in the CRM"
+          >
+            Open Initiative in CRM <ArrowRight size={11} />
+          </a>
+          {open ? <ChevronDown size={14} className="text-text-muted" /> : <ChevronRight size={14} className="text-text-muted" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-text-muted mb-1.5">
+              Tasks ({openTasks.length})
+            </div>
+            {openTasks.length === 0 && doneTasks.length === 0 && (
+              <div className="text-xs text-text-muted italic">No tasks. Add in CRM.</div>
+            )}
+            <div className="space-y-1">
+              {openTasks.map(t => <TaskRow key={t.id} t={t} />)}
+              {showCompleted && doneTasks.map(t => <TaskRow key={t.id} t={t} />)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-wider text-text-muted mb-1.5">
+              Reminders ({openReminders.length})
+            </div>
+            {openReminders.length === 0 && doneReminders.length === 0 && (
+              <div className="text-xs text-text-muted italic">No reminders. Add in CRM.</div>
+            )}
+            <div className="space-y-1">
+              {openReminders.map(r => <ReminderRow key={r.id} r={r} />)}
+              {showCompleted && doneReminders.map(r => <ReminderRow key={r.id} r={r} />)}
+            </div>
+          </div>
+          {totalDone > 0 && (
+            <button
+              onClick={() => setShowCompleted(v => !v)}
+              className="md:col-span-2 text-xs text-text-muted hover:text-accent inline-flex items-center gap-1"
+            >
+              {showCompleted
+                ? <><EyeOff size={11} /> Hide {totalDone} completed</>
+                : <><Eye size={11} /> Show {totalDone} completed</>}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function crmDueColor(d?: string | null): string | undefined {
+  if (!d) return undefined;
+  const days = (new Date(d).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if (days < 0) return '#da3633';
+  if (days <= 3) return '#d29922';
+  return undefined;
+}
+
+function TaskRow({ t }: { t: CrmFollowupTask }) {
+  const contactName = t.contact ? `${t.contact.firstName} ${t.contact.lastName}`.trim() : null;
+  return (
+    <div
+      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs"
+      style={{ background: '#0d1117', border: '1px solid #1f3556', opacity: t.completed ? 0.55 : 1 }}
+    >
+      <span className="flex-1 truncate" style={{ textDecoration: t.completed ? 'line-through' : undefined }}>
+        {t.title}
+      </span>
+      {contactName && <span className="text-text-muted truncate max-w-[140px]">{contactName}</span>}
+      {t.dueDate && (
+        <span style={{ color: t.completed ? '#8b949e' : (crmDueColor(t.dueDate) || '#8b949e') }}>
+          {new Date(t.dueDate).toLocaleDateString()}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ReminderRow({ r }: { r: CrmFollowupReminder }) {
+  const contactName = r.contact ? `${r.contact.firstName} ${r.contact.lastName}`.trim() : null;
+  return (
+    <div
+      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs"
+      style={{ background: '#0d1117', border: '1px solid #1f3556', opacity: r.completed ? 0.55 : 1 }}
+    >
+      <span className="flex-1 truncate" style={{ textDecoration: r.completed ? 'line-through' : undefined }}>
+        {r.title}
+      </span>
+      {contactName && <span className="text-text-muted truncate max-w-[140px]">{contactName}</span>}
+      <span style={{ color: r.completed ? '#8b949e' : (crmDueColor(r.remindAt) || '#8b949e') }}>
+        {new Date(r.remindAt).toLocaleDateString()}
+      </span>
     </div>
   );
 }

@@ -43,6 +43,7 @@ router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);
 // (controllers enforce client scope via assertClientAccess).
 router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
+router.get('/tracks/:id/crm-followups', ctl.getTrackCrmFollowups);
 router.post('/tracks', requireWorkflowEditor, ctl.createTrack);
 router.post('/tracks/probe-url', requireWorkflowEditor, ctl.probeOpportunityUrl);
 router.post('/tracks/extract-preview', requireWorkflowEditor, ctl.extractPreview);

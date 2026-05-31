@@ -258,9 +258,84 @@ export async function listTracks(req: AuthRequest, res: Response) {
         },
       },
     });
-    return res.json(tracks.map(applyDerivedPhaseStatus));
+    const initiativeIds = tracks.map(t => t.initiativeId).filter((s): s is string => !!s);
+    const followupCounts = await crmFollowupCountsByInitiative(initiativeIds);
+    return res.json(
+      tracks.map(t => ({
+        ...applyDerivedPhaseStatus(t),
+        openCrmFollowups: t.initiativeId ? followupCounts.get(t.initiativeId) || 0 : 0,
+      }))
+    );
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// Counts open (uncompleted, not soft-deleted) CRM Tasks + Reminders bucketed
+// by initiativeId. Used to render the "N follow-ups" badge on dashboard
+// track cards without an extra round-trip per track.
+async function crmFollowupCountsByInitiative(initiativeIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (initiativeIds.length === 0) return out;
+  const [tasks, reminders] = await Promise.all([
+    prisma.task.groupBy({
+      by: ['initiativeId'],
+      where: { initiativeId: { in: initiativeIds }, completed: false, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.reminder.groupBy({
+      by: ['initiativeId'],
+      where: { initiativeId: { in: initiativeIds }, completed: false, deletedAt: null },
+      _count: { _all: true },
+    }),
+  ]);
+  for (const row of tasks) {
+    if (row.initiativeId) out.set(row.initiativeId, (out.get(row.initiativeId) || 0) + row._count._all);
+  }
+  for (const row of reminders) {
+    if (row.initiativeId) out.set(row.initiativeId, (out.get(row.initiativeId) || 0) + row._count._all);
+  }
+  return out;
+}
+
+// Returns the CRM Tasks & Reminders attached to a workflow track's mirrored
+// CRM Initiative. Read-only display in the workflow UI; edits happen in CRM.
+export async function getTrackCrmFollowups(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    const track = await prisma.workflowTrack.findUnique({
+      where: { id },
+      select: { id: true, workflowClientId: true, initiativeId: true },
+    });
+    if (!track) return res.status(404).json({ error: 'Not found' });
+    if (!assertClientAccess(req, track.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+    if (!track.initiativeId) return res.json({ tasks: [], reminders: [], initiativeId: null });
+
+    const [tasks, reminders] = await Promise.all([
+      prisma.task.findMany({
+        where: { initiativeId: track.initiativeId, deletedAt: null },
+        orderBy: [{ completed: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        select: {
+          id: true, title: true, dueDate: true, completed: true,
+          contactId: true, entityId: true, initiativeId: true,
+          contact: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      prisma.reminder.findMany({
+        where: { initiativeId: track.initiativeId, deletedAt: null },
+        orderBy: [{ completed: 'asc' }, { remindAt: 'asc' }],
+        select: {
+          id: true, title: true, notes: true, remindAt: true, completed: true,
+          contactId: true, entityId: true, initiativeId: true,
+          contact: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+
+    return res.json({ tasks, reminders, initiativeId: track.initiativeId });
+  } catch (err) {
+    console.error('[getTrackCrmFollowups]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }
