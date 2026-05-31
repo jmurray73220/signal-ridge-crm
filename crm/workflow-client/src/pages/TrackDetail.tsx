@@ -58,6 +58,10 @@ export function TrackDetail() {
   // assigned client; backend enforces client scope.
   const isAdmin = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
   const canEditSteps = isAdmin;
+  // CRM references (follow-ups panel, etc.) are internal Signal Ridge context —
+  // WorkflowAdmin only. Client logins can be Editor/Viewer, so isAdmin is not
+  // enough here.
+  const isWorkflowAdmin = user?.workflowRole === 'WorkflowAdmin';
   const qc = useQueryClient();
   const { data: track, isLoading } = useQuery({
     queryKey: ['track', id],
@@ -539,7 +543,7 @@ export function TrackDetail() {
         ) : null}
       </div>
 
-      <CrmFollowupsPanel trackId={track.id} />
+      {isWorkflowAdmin && <CrmFollowupsPanel trackId={track.id} />}
 
       <div className="space-y-4">
         {track.phases.map((phase) => (

@@ -250,6 +250,7 @@ export async function listTracks(req: AuthRequest, res: Response) {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
               include: {
                 actionItems: {
+                  where: { deletedAt: null },
                   orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
                 },
               },
@@ -258,12 +259,17 @@ export async function listTracks(req: AuthRequest, res: Response) {
         },
       },
     });
-    const initiativeIds = tracks.map(t => t.initiativeId).filter((s): s is string => !!s);
+    // CRM follow-up counts are internal Signal Ridge context — only attach them
+    // for WorkflowAdmin. Client logins (Editor/Viewer) never see CRM references.
+    const isAdmin = req.user?.workflowRole === 'WorkflowAdmin';
+    const initiativeIds = isAdmin
+      ? tracks.map(t => t.initiativeId).filter((s): s is string => !!s)
+      : [];
     const followupCounts = await crmFollowupCountsByInitiative(initiativeIds);
     return res.json(
       tracks.map(t => ({
         ...applyDerivedPhaseStatus(t),
-        openCrmFollowups: t.initiativeId ? followupCounts.get(t.initiativeId) || 0 : 0,
+        openCrmFollowups: isAdmin && t.initiativeId ? followupCounts.get(t.initiativeId) || 0 : 0,
       }))
     );
   } catch (err) {
@@ -367,6 +373,7 @@ export async function getTrack(req: AuthRequest, res: Response) {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
               include: {
                 actionItems: {
+                  where: { deletedAt: null },
                   orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
                 },
               },
@@ -1986,7 +1993,7 @@ export async function integrateSOWWithTrack(req: AuthRequest, res: Response) {
           include: {
             milestones: {
               orderBy: { sortOrder: 'asc' },
-              include: { actionItems: { orderBy: { sortOrder: 'asc' }, select: { title: true, dueDate: true, status: true } } },
+              include: { actionItems: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' }, select: { title: true, dueDate: true, status: true } } },
             },
           },
         },

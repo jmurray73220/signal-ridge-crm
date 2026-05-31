@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Send, User } from 'lucide-react';
+import { ArrowLeft, Send, User, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getActionItem, updateActionItem, createComment, listAssignees, listClients } from '../api';
+import { getActionItem, updateActionItem, deleteActionItem, createComment, listAssignees, listClients } from '../api';
 import type { Assignee } from '../api';
 import type { WorkflowClient } from '../types';
 import { useAuth } from '../AuthContext';
+import { ConfirmModal } from '../components/Modal';
 import { StatusBadge } from './Dashboard';
 
 const STATUSES = ['Todo', 'InProgress', 'Done', 'Blocked'] as const;
 
 export function ActionItemDetail() {
   const { id } = useParams<{ id: string }>();
+  const nav = useNavigate();
   const { user } = useAuth();
   const canEdit = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
+  // Only WorkflowAdmin sees CRM-referencing guidance; client logins must not.
+  const isWorkflowAdmin = user?.workflowRole === 'WorkflowAdmin';
   const qc = useQueryClient();
   const { data: item, isLoading } = useQuery({
     queryKey: ['action-item', id],
@@ -41,6 +45,8 @@ export function ActionItemDetail() {
   const [saving, setSaving] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [notes, setNotes] = useState<string>('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (item) setNotes(item.notes || '');
@@ -96,6 +102,21 @@ export function ActionItemDetail() {
     }
   }
 
+  async function handleDelete() {
+    const trackId = item!.milestone?.phase?.track?.id;
+    setDeleting(true);
+    try {
+      await deleteActionItem(id!);
+      toast.success('Action moved to recycle bin');
+      qc.invalidateQueries({ queryKey: ['track', trackId] });
+      qc.invalidateQueries({ queryKey: ['tracks'] });
+      nav(`/tracks/${trackId || ''}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed');
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <Link
@@ -126,7 +147,18 @@ export function ActionItemDetail() {
               {item.dueDate && <span>Due {new Date(item.dueDate).toLocaleDateString()}</span>}
             </div>
           </div>
-          <StatusBadge status={item.status} />
+          <div className="flex items-center gap-2 shrink-0">
+            <StatusBadge status={item.status} />
+            {canEdit && (
+              <button
+                onClick={() => setDeleteOpen(true)}
+                className="btn-secondary flex items-center gap-1 hover:border-status-red hover:text-status-red"
+                title="Delete action"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+            )}
+          </div>
         </div>
 
         {canEdit && (
@@ -183,7 +215,9 @@ export function ActionItemDetail() {
               </select>
               {assignees.length === 0 && (
                 <div className="text-xs text-text-muted mt-1">
-                  No contacts found. Link contacts to the {clientName} entity in the CRM.
+                  {isWorkflowAdmin
+                    ? <>No contacts found. Link contacts to the {clientName} entity in the CRM.</>
+                    : 'No contacts available to assign.'}
                 </div>
               )}
             </div>
@@ -245,6 +279,25 @@ export function ActionItemDetail() {
           </div>
         )}
       </div>
+
+      {deleteOpen && (
+        <ConfirmModal
+          title="Delete action"
+          danger
+          confirmLabel="Delete action"
+          loading={deleting}
+          message={
+            <>
+              Delete <span className="text-accent font-medium">{item.title}</span>?
+              <br />
+              <br />
+              It will be moved to the recycle bin and can be restored by an admin.
+            </>
+          }
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      )}
     </div>
   );
 }

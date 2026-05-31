@@ -22,6 +22,9 @@ export function Dashboard() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const canEdit = user?.workflowRole === 'WorkflowAdmin' || user?.workflowRole === 'WorkflowEditor';
+  // Orphan CRM initiatives and follow-up counts are internal Signal Ridge
+  // context — WorkflowAdmin only, never client logins (Editor/Viewer).
+  const isWorkflowAdmin = user?.workflowRole === 'WorkflowAdmin';
   const [view, setView] = useState<View>('kanban');
   const [newTrackOpen, setNewTrackOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -37,7 +40,7 @@ export function Dashboard() {
   const orphansQuery = useQuery<OrphanInitiative[]>({
     queryKey: ['orphan-initiatives', selectedClientId],
     queryFn: () => listOrphanInitiatives(selectedClientId!),
-    enabled: !!selectedClientId,
+    enabled: !!selectedClientId && isWorkflowAdmin,
   });
 
   async function promoteOrphan(initiativeId: string) {

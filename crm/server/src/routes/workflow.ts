@@ -43,7 +43,8 @@ router.delete('/clients/:id', requireWorkflowAdmin, ctl.deleteClient);
 // (controllers enforce client scope via assertClientAccess).
 router.get('/tracks', ctl.listTracks);
 router.get('/tracks/:id', ctl.getTrack);
-router.get('/tracks/:id/crm-followups', ctl.getTrackCrmFollowups);
+// CRM follow-ups are internal Signal Ridge context — admin-only, never client logins.
+router.get('/tracks/:id/crm-followups', requireWorkflowAdmin, ctl.getTrackCrmFollowups);
 router.post('/tracks', requireWorkflowEditor, ctl.createTrack);
 router.post('/tracks/probe-url', requireWorkflowEditor, ctl.probeOpportunityUrl);
 router.post('/tracks/extract-preview', requireWorkflowEditor, ctl.extractPreview);
@@ -55,8 +56,9 @@ router.delete('/tracks/:id', requireWorkflowEditor, ctl.deleteTrack);
 router.delete('/track/:id', requireWorkflowEditor, ctl.deleteTrack);
 
 // Orphan CRM initiatives — visible in workflow Dashboard so initiatives
-// created directly in the CRM aren't invisible here.
-router.get('/orphan-initiatives', ctl.listOrphanInitiatives);
+// created directly in the CRM aren't invisible here. Admin-only: these are
+// raw CRM rows ("From CRM") and must never surface for client logins.
+router.get('/orphan-initiatives', requireWorkflowAdmin, ctl.listOrphanInitiatives);
 router.post('/orphan-initiatives/:initiativeId/promote', requireWorkflowEditor, ctl.promoteInitiativeToTrack);
 
 // Phases
