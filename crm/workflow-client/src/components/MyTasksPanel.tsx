@@ -8,7 +8,9 @@ import { listMyTasks, type MyTaskAction, type MyTaskStep, type MyTaskPhase } fro
 // logged-in user is the assignee on, across every track they can see.
 // Renders above the tracks grid on the dashboard.
 export function MyTasksPanel() {
-  const [open, setOpen] = useState(true);
+  // Start collapsed — this panel remounts on every dashboard visit, so an
+  // open default re-expands each time. Users open it when they want it.
+  const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: listMyTasks,

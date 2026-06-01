@@ -28,6 +28,35 @@ export async function getUsers(req: AuthRequest, res: Response) {
   }
 }
 
+// Signal Ridge team = internal humans only. Mirrors the workflow assignee
+// picker's definition (see listAssignees): active-or-not users that are NOT
+// scoped to a workflow client (those are a client's own people) and are NOT
+// bot/machine users (anything with an ApiKey row, e.g. Bubba).
+export async function listTeamMembers(_req: AuthRequest, res: Response) {
+  try {
+    const users = await prisma.user.findMany({
+      where: { workflowClientId: null, apiKeys: { none: {} } },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        workflowRole: true,
+        workflowClientId: true,
+        isActive: true,
+        lastLogin: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return res.json(users);
+  } catch (err) {
+    console.error('[listTeamMembers]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 export async function listWorkflowClients(_req: AuthRequest, res: Response) {
   try {
     const clients = await prisma.workflowClient.findMany({

@@ -134,6 +134,7 @@ export const searchApi = {
 // Users (admin only)
 export const usersApi = {
   list: () => api.get<User[]>('/api/users'),
+  team: () => api.get<User[]>('/api/users/team'),
   create: (data: any) => api.post<User>('/api/users', data),
   updateRole: (id: string, role: string) => api.patch(`/api/users/${id}/role`, { role }),
   updateWorkflowRole: (id: string, body: { workflowRole: string | null; workflowClientId: string | null }) =>

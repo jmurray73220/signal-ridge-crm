@@ -24,6 +24,7 @@ import { Interactions } from './pages/Interactions';
 import { Tasks } from './pages/Tasks';
 import { Reminders } from './pages/Reminders';
 import { Users } from './pages/settings/Users';
+import { Team } from './pages/settings/Team';
 import { Account } from './pages/settings/Account';
 import { GmailSettings } from './pages/settings/Gmail';
 import { RecycleBin } from './pages/settings/RecycleBin';
@@ -139,6 +140,10 @@ function AppRoutes() {
       <Route
         path="/settings/users"
         element={<ProtectedRoute adminOnly><SettingsLayout><Users /></SettingsLayout></ProtectedRoute>}
+      />
+      <Route
+        path="/settings/team"
+        element={<ProtectedRoute adminOnly><SettingsLayout><Team /></SettingsLayout></ProtectedRoute>}
       />
       <Route
         path="/settings/account"

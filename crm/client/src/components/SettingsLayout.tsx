@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { User, Users as UsersIcon, Mail, Trash2 } from 'lucide-react';
+import { User, Users as UsersIcon, Building2, Mail, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Tab {
@@ -12,6 +12,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { path: '/settings/account', label: 'Account', icon: <User size={15} /> },
+  { path: '/settings/team', label: 'Team', icon: <Building2 size={15} />, adminOnly: true },
   { path: '/settings/users', label: 'Users', icon: <UsersIcon size={15} />, adminOnly: true },
   { path: '/settings/gmail', label: 'Gmail', icon: <Mail size={15} /> },
   { path: '/settings/recycle-bin', label: 'Recycle Bin', icon: <Trash2 size={15} />, adminOnly: true },
