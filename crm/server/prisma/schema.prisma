@@ -48,6 +48,9 @@ model User {
   workflowSOWsCreated        WorkflowSOW[]        @relation("WorkflowSOWCreatedBy")
   workflowSOWVersionsCreated WorkflowSOWVersion[] @relation("WorkflowSOWVersionCreatedBy")
   workflowCommentsCreated    WorkflowComment[]    @relation("WorkflowCommentCreatedBy")
+  workflowTracksCreated      WorkflowTrack[]      @relation("WorkflowTrackCreatedBy")
+  workflowPhasesCreated      WorkflowPhase[]      @relation("WorkflowPhaseCreatedBy")
+  workflowMilestonesCreated  WorkflowMilestone[]  @relation("WorkflowMilestoneCreatedBy")
 
   // Change log author
   changeLogEntries ChangeLog[] @relation("ChangeLogUser")
@@ -547,6 +550,10 @@ model WorkflowTrack {
   deletedAt       DateTime?
   deletedByUserId String?
 
+  // Creator (who entered this track). Nullable for rows created before tracking.
+  createdByUserId String?
+  createdBy       User?   @relation("WorkflowTrackCreatedBy", fields: [createdByUserId], references: [id])
+
   phases WorkflowPhase[]
   sow    WorkflowSOW?
 }
@@ -569,6 +576,10 @@ model WorkflowPhase {
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  // Creator (who entered this phase). Nullable for rows created before tracking.
+  createdByUserId String?
+  createdBy       User?     @relation("WorkflowPhaseCreatedBy", fields: [createdByUserId], references: [id])
 
   milestones  WorkflowMilestone[]
   attachments PhaseAttachment[]
@@ -616,6 +627,10 @@ model WorkflowMilestone {
   sortOrder   Int           @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  // Creator (who entered this step). Nullable for rows created before tracking.
+  createdByUserId String?
+  createdBy       User?     @relation("WorkflowMilestoneCreatedBy", fields: [createdByUserId], references: [id])
 
   actionItems WorkflowActionItem[]
 }

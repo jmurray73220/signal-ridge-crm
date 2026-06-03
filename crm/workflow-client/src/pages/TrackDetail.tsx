@@ -35,6 +35,7 @@ import type {
   MilestoneStatus,
   ActionItemStatus,
 } from '../types';
+import { creatorName } from '../types';
 import { StatusBadge } from './Dashboard';
 import { useAuth } from '../AuthContext';
 import { Modal, PromptModal, ConfirmModal } from '../components/Modal';
@@ -422,6 +423,7 @@ export function TrackDetail() {
             </div>
           )}
           <h1 className="text-2xl font-semibold mt-1">{track.title}</h1>
+          <div className="text-xs text-text-muted mt-1">Created by {creatorName(track.createdBy)}</div>
           {track.description && (
             <p className="text-text-muted text-sm mt-2 max-w-3xl">{track.description}</p>
           )}
@@ -934,6 +936,7 @@ function PhaseBlock({
               {phase.budget && <span>Budget: <span className="text-accent">{phase.budget}</span></span>}
               {phase.timeframe && <span>Timeframe: <span className="text-text-primary">{phase.timeframe}</span></span>}
               {phase.assignedTo && <span>Assigned: <span className="text-text-primary">@{phase.assignedTo}</span></span>}
+              <span>By {creatorName(phase.createdBy)}</span>
             </div>
           </div>
         </button>
@@ -1058,6 +1061,7 @@ function MilestoneBlock({
             <div className="flex items-center gap-3 mt-1 text-xs text-text-muted flex-wrap">
               {milestone.dueDate && <span>Due {new Date(milestone.dueDate).toLocaleDateString()}</span>}
               {milestone.assignedTo && <span>Assigned: <span className="text-text-primary">@{milestone.assignedTo}</span></span>}
+              <span>By {creatorName(milestone.createdBy)}</span>
             </div>
           </div>
         </button>

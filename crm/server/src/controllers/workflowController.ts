@@ -243,12 +243,15 @@ export async function listTracks(req: AuthRequest, res: Response) {
       where: { workflowClientId: workflowClientId as string },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
         phases: {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: {
+            createdBy: { select: { id: true, firstName: true, lastName: true } },
             milestones: {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
               include: {
+                createdBy: { select: { id: true, firstName: true, lastName: true } },
                 actionItems: {
                   where: { deletedAt: null },
                   orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -366,12 +369,15 @@ export async function getTrack(req: AuthRequest, res: Response) {
     const track = await prisma.workflowTrack.findUnique({
       where: { id },
       include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
         phases: {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: {
+            createdBy: { select: { id: true, firstName: true, lastName: true } },
             milestones: {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
               include: {
+                createdBy: { select: { id: true, firstName: true, lastName: true } },
                 actionItems: {
                   where: { deletedAt: null },
                   orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -505,6 +511,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
       sortOrder: sortOrder ?? 0,
       isContractOpportunity: isOpp,
       opportunityUrl: isOpp && opportunityUrl ? String(opportunityUrl).trim() : null,
+      createdByUserId: req.user?.userId || null,
     };
 
     if (isOpp && extractedFields && typeof extractedFields === 'object') {
@@ -547,6 +554,7 @@ export async function createTrack(req: AuthRequest, res: Response) {
           description: p.description,
           status: p.status,
           sortOrder: i,
+          createdByUserId: req.user?.userId || null,
         })),
       });
     }
@@ -1221,6 +1229,7 @@ export async function createPhase(req: AuthRequest, res: Response) {
         status: status || 'NotStarted',
         assignedTo: assignedTo || null,
         sortOrder: sortOrder ?? 0,
+        createdByUserId: req.user?.userId || null,
       },
     });
     return res.status(201).json(phase);
@@ -1319,6 +1328,7 @@ export async function createMilestone(req: AuthRequest, res: Response) {
         status: status || 'NotStarted',
         assignedTo: assignedTo || null,
         sortOrder: sortOrder ?? 0,
+        createdByUserId: req.user?.userId || null,
       },
     });
     return res.status(201).json(milestone);

@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../AuthContext';
 import { useClientContext } from '../ClientContext';
 import type { WorkflowTrack, WorkflowActionItem } from '../types';
+import { creatorName } from '../types';
 import { NewTrackModal } from '../components/NewTrackModal';
 import { MyTasksPanel } from '../components/MyTasksPanel';
 
@@ -379,6 +380,8 @@ function TrackColumn({ track }: { track: WorkflowTrack }) {
           <span>{stats.milestones} steps</span>
           <span>·</span>
           <span>{stats.done}/{stats.items} done</span>
+          <span>·</span>
+          <span>by {creatorName(track.createdBy)}</span>
           {openFollowups ? (
             <>
               <span>·</span>

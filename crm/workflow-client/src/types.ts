@@ -20,6 +20,17 @@ export interface WorkflowClient {
   _count?: { tracks: number; sows: number };
 }
 
+// Lightweight creator stamp attached to tracks, phases, and steps so the UI
+// can show who entered each item. Null for rows created before creator tracking.
+export interface Creator { id: string; firstName: string; lastName: string }
+
+// Display name for a creator stamp. Falls back to "Unknown" for entries that
+// predate creator tracking (createdBy is null on those rows).
+export function creatorName(c?: Creator | null): string {
+  const n = c ? `${c.firstName} ${c.lastName}`.trim() : '';
+  return n || 'Unknown';
+}
+
 export type TrackStatus = 'Active' | 'OnHold' | 'Completed' | 'Archived';
 export type PhaseStatus = 'NotStarted' | 'InProgress' | 'Completed' | 'Blocked';
 export type MilestoneStatus = 'NotStarted' | 'InProgress' | 'Completed' | 'Blocked';
@@ -52,6 +63,7 @@ export interface WorkflowMilestone {
   assignedTo?: string | null;
   completedAt: string | null;
   sortOrder: number;
+  createdBy?: Creator | null;
   actionItems: WorkflowActionItem[];
 }
 
@@ -84,6 +96,7 @@ export interface WorkflowPhase {
   statusManuallySet?: boolean;
   assignedTo?: string | null;
   sortOrder: number;
+  createdBy?: Creator | null;
   milestones: WorkflowMilestone[];
   attachments?: PhaseAttachment[];
   links?: PhaseLink[];
@@ -123,6 +136,7 @@ export interface WorkflowTrack {
   additionalSections?: AdditionalSection[];
   aiExtractionStatus?: 'pending' | 'ok' | 'partial' | 'blocked' | 'failed' | null;
   aiExtractedAt?: string | null;
+  createdBy?: Creator | null;
   phases: WorkflowPhase[];
   sow?: { id: string; title: string; status: SOWStatus; updatedAt: string } | null;
 }
