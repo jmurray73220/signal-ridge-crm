@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
+import { formatBioSafe } from '../services/bioFormat';
 import { AuthRequest } from '../types';
 
 /**
@@ -155,6 +156,9 @@ export async function createContact(req: AuthRequest, res: Response) {
   }
 
   try {
+    // Auto-format pasted LinkedIn/bio text into a narrative + Experience list.
+    // Falls back to the raw text if the formatter fails, so a save never breaks.
+    const formattedBio = await formatBioSafe(bio);
     const contact = await prisma.contact.create({
       data: {
         firstName,
@@ -166,7 +170,7 @@ export async function createContact(req: AuthRequest, res: Response) {
         cell: cell || null,
         linkedIn: linkedIn || null,
         website: website || null,
-        bio: bio || null,
+        bio: formattedBio || null,
         tags: JSON.stringify(tags || []),
         issuePortfolios: JSON.stringify(issuePortfolios || []),
         entityId: entityId || null,
@@ -192,6 +196,11 @@ export async function updateContact(req: AuthRequest, res: Response) {
   try {
     const before = await prisma.contact.findUnique({ where: { id } });
     if (!before || before.deletedAt) return res.status(404).json({ error: 'Not found' });
+    // Re-format the bio only when it was actually changed in this edit — a new
+    // LinkedIn paste. Unchanged bios (or edits to other fields) are left as-is,
+    // so we never re-run the formatter on an already-clean bio.
+    const bioChanged = bio !== undefined && bio !== before.bio;
+    const nextBio = bioChanged ? await formatBioSafe(bio) : undefined;
     const contact = await prisma.contact.update({
       where: { id },
       data: {
@@ -204,7 +213,7 @@ export async function updateContact(req: AuthRequest, res: Response) {
         cell: cell !== undefined ? cell : undefined,
         linkedIn: linkedIn !== undefined ? linkedIn : undefined,
         website: website !== undefined ? website : undefined,
-        bio: bio !== undefined ? bio : undefined,
+        bio: bioChanged ? (nextBio ?? null) : undefined,
         ...(tags !== undefined && { tags: JSON.stringify(tags) }),
         ...(issuePortfolios !== undefined && { issuePortfolios: JSON.stringify(issuePortfolios) }),
         entityId: entityId !== undefined ? entityId : undefined,

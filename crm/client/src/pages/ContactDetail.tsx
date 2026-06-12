@@ -223,7 +223,7 @@ export function ContactDetail() {
             )}
 
             {contact.bio && (
-              <p className="mt-4 text-sm leading-relaxed" style={{ color: '#8b949e' }}>{contact.bio}</p>
+              <p className="mt-4 text-sm leading-relaxed" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>{contact.bio}</p>
             )}
           </div>
 
