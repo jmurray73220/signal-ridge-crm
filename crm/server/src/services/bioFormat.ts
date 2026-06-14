@@ -24,13 +24,14 @@ Output PLAIN TEXT only — no markdown symbols (no #, *, _, backticks). Use this
 1. A narrative summary paragraph (2-4 sentences, third person, professional tone) describing who the person is, their current role, and their focus areas.
 2. A blank line.
 3. The word Experience on its own line (no punctuation).
-4. One bullet per role, each on its own line, formatted exactly: "• {Title}, {Organization} ({start}–{end})". Most recent role first. Preserve dates exactly as written in the input. One role per line — never prose.
-5. If education is present: a blank line, then the word Education on its own line, then one bullet per entry: "• {Degree}, {School} ({year})".
+4. One bullet per role, each on its own line, formatted EXACTLY: "• {Title} — {Organization} ({start}–{end})". Use a spaced em dash " — " between the title and the organization, and put the date range in parentheses at the end. Most recent role first. Preserve dates exactly as written in the input. One role per line — never prose.
+5. If education is present: a blank line, then the word Education on its own line, then one bullet per entry: "• {Degree} — {School} ({year})".
 
 Rules:
 - Use ONLY information present in the input. Never invent roles, dates, employers, or facts.
 - Omit a section entirely if its data isn't present (e.g. no Education line if there's no schooling).
-- Keep the "•" bullet character exactly.
+- Keep the "•" bullet character and the " — " separator exactly.
+- Do not include a role's responsibility/description sentences in the bullet — title, organization, and dates only.
 - If the input is already a clean prose bio rather than a raw LinkedIn dump, lightly clean it and return the narrative; add an Experience list only if distinct roles are clearly present.
 - Return ONLY the bio text — no preamble, no commentary, no closing remarks.`;
 

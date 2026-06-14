@@ -10,6 +10,7 @@ import { InteractionAttachments } from '../components/InteractionAttachments';
 import { EntityTypeBadge } from '../components/EntityTypeBadge';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { ContactModal } from '../components/ContactModal';
+import { BioCard } from '../components/BioCard';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { BriefingModal } from '../components/BriefingModal';
 import { ChangeLogPanel } from '../components/ChangeLogPanel';
@@ -222,9 +223,7 @@ export function ContactDetail() {
               </div>
             )}
 
-            {contact.bio && (
-              <p className="mt-4 text-sm leading-relaxed" style={{ color: '#8b949e', whiteSpace: 'pre-wrap' }}>{contact.bio}</p>
-            )}
+            {contact.bio && <BioCard bio={contact.bio} />}
           </div>
 
           {/* Actions */}
