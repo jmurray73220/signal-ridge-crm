@@ -95,6 +95,8 @@ export const interactionsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  addLink: (id: string, url: string, title?: string) =>
+    api.post<InteractionAttachment>(`/api/interactions/${id}/attachments/link`, { url, title }),
   deleteAttachment: (attachmentId: string) =>
     api.delete(`/api/interactions/attachments/${attachmentId}`),
   attachmentDownloadUrl: (attachmentId: string) =>
@@ -107,6 +109,7 @@ export type InteractionAttachment = {
   filename: string;
   mimeType: string;
   source: string | null;
+  url?: string | null; // set for link attachments (e.g. Google Drive); opens instead of downloads
   uploadedAt: string;
   uploadedByUserId: string | null;
   sizeBytes?: number;

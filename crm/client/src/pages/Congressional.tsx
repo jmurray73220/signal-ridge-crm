@@ -178,7 +178,7 @@ export function Congressional() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid #30363d' }}>
-                  {['Member', 'Chamber', 'State/District', 'Party', 'Key Committees', 'Contacts', 'Last Interaction'].map(h => (
+                  {['Member', 'Chamber', 'State/District', 'Party', 'Key Committees', 'Contacts', 'Last Meeting Note'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
                   ))}
                   <th className="w-8" />

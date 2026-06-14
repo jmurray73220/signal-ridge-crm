@@ -128,7 +128,7 @@ export function Dashboard() {
             <Plus size={14} /> Contact
           </Link>
           <Link to="/interactions" className="btn-primary flex items-center gap-1.5 text-sm">
-            <Plus size={14} /> Log Interaction
+            <Plus size={14} /> Log Meeting Note
           </Link>
         </div>
       </div>
@@ -174,10 +174,10 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Interactions */}
+        {/* Recent Meeting Notes */}
         <div className="lg:col-span-2 card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: '#8b949e' }}>Recent Interactions</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: '#8b949e' }}>Recent Meeting Notes</h2>
             <Link to="/interactions" className="text-xs flex items-center gap-1" style={{ color: '#c9a84c', textDecoration: 'none' }}>
               View all <ChevronRight size={12} />
             </Link>
@@ -185,8 +185,8 @@ export function Dashboard() {
           {recentInteractions.length === 0 ? (
             <div className="text-center py-10">
               <MessageSquare size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No interactions logged yet.</p>
-              <Link to="/interactions" className="btn-primary inline-block mt-3 text-sm">Log Interaction</Link>
+              <p className="text-sm" style={{ color: '#8b949e' }}>No meeting notes logged yet.</p>
+              <Link to="/interactions" className="btn-primary inline-block mt-3 text-sm">Log Meeting Note</Link>
             </div>
           ) : (
             <div className="space-y-3">

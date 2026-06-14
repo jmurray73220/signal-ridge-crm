@@ -216,7 +216,7 @@ export function InitiativeDetail() {
             {user?.role !== 'Viewer' && (
               <>
                 <button onClick={() => setShowLogInteraction(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                  <MessageSquare size={14} /> Log Interaction
+                  <MessageSquare size={14} /> Log Meeting Note
                 </button>
                 <button onClick={() => setShowEdit(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
                   <Edit2 size={14} /> Edit
@@ -244,7 +244,7 @@ export function InitiativeDetail() {
         {([
           ['contacts', 'Contacts', contacts.length],
           ['organizations', 'Organizations', entities.length],
-          ['interactions', 'Interactions', interactions.length],
+          ['interactions', 'Meeting Notes', interactions.length],
           ['tasks', 'Tasks', tasks.length],
         ] as [Tab, string, number][]).map(([t, label, count]) => (
           <button
@@ -380,14 +380,14 @@ export function InitiativeDetail() {
           {user?.role !== 'Viewer' && (
             <div className="flex justify-end mb-3">
               <button onClick={() => setShowLogInteraction(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                <Plus size={14} /> Log Interaction
+                <Plus size={14} /> Log Meeting Note
               </button>
             </div>
           )}
           {interactions.length === 0 ? (
             <div className="card text-center py-10">
               <MessageSquare size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No interactions logged for this initiative.</p>
+              <p className="text-sm" style={{ color: '#8b949e' }}>No meeting notes logged for this initiative.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -487,7 +487,7 @@ export function InitiativeDetail() {
             setShowLogInteraction(false);
             qc.invalidateQueries({ queryKey: ['initiative', id] });
             qc.invalidateQueries({ queryKey: ['interactions'] });
-            toast.success('Interaction logged');
+            toast.success('Meeting note logged');
           }}
         />
       )}

@@ -53,7 +53,7 @@ const sections: NavSection[] = [
     title: 'Activity',
     items: [
       { path: '/initiatives', icon: <Target size={18} />, label: 'Initiatives' },
-      { path: '/interactions', icon: <MessageSquare size={18} />, label: 'Interactions' },
+      { path: '/interactions', icon: <MessageSquare size={18} />, label: 'Meeting Notes' },
       { path: '/reminders', icon: <Bell size={18} />, label: 'Reminders' },
     ],
   },

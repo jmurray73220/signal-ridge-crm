@@ -105,7 +105,7 @@ export function Clients() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid #30363d' }}>
-                {['Name', 'Industry', 'Contract Vehicles', 'Contacts', 'Tagged Contacts', 'Active Initiatives', 'Last Interaction'].map(h => (
+                {['Name', 'Industry', 'Contract Vehicles', 'Contacts', 'Tagged Contacts', 'Active Initiatives', 'Last Meeting Note'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
                 ))}
                 <th className="w-8" />

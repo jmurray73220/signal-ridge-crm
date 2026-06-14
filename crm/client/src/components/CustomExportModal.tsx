@@ -22,7 +22,7 @@ const CONTACT_FIELDS = [
   { key: 'linkedIn', label: 'LinkedIn' },
   { key: 'tags', label: 'Tags' },
   { key: 'bio', label: 'Bio' },
-  { key: 'lastInteraction', label: 'Last Interaction' },
+  { key: 'lastInteraction', label: 'Last Meeting Note' },
 ];
 
 function ClientAutocomplete({

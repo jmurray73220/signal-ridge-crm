@@ -44,11 +44,27 @@ function serialize(att: any) {
   // Don't ship fileData or extractedText in list responses — they can be huge.
   // Callers download the file via the dedicated endpoint.
   const { fileData, extractedText, ...rest } = att;
+  // Link attachments (e.g. Google Drive) aren't files: the URL lives in
+  // fileData as plain text. Surface it as `url` so the UI opens it instead of
+  // trying to download a blob. See addLinkAttachment.
+  const isLink = att.source === 'drive';
   return {
     ...rest,
-    sizeBytes: fileData ? Math.floor((fileData.length * 3) / 4) : 0,
+    url: isLink ? fileData : undefined,
+    sizeBytes: isLink ? 0 : (fileData ? Math.floor((fileData.length * 3) / 4) : 0),
     hasText: Boolean(extractedText && extractedText.length > 0),
   };
+}
+
+// Best-effort readable label for a pasted link when the user doesn't give one.
+function deriveLinkTitle(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('google.com')) return 'Google Drive link';
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return 'Link';
+  }
 }
 
 // ─── Multipart upload (browser UI) ───────────────────────────────────────────
@@ -142,6 +158,41 @@ export async function uploadAttachmentJson(req: AuthRequest, res: Response) {
   }
 }
 
+// ─── Link attachment (Google Drive share link, or any URL) ───────────────────
+// A link isn't a file. We store the URL itself in `fileData` (plain text, NOT
+// base64) and mark `source: 'drive'`. `serialize` then exposes it as `url`, and
+// the UI renders it as an open-in-new-tab link instead of a download. This keeps
+// the feature schema-free — no migration needed.
+export async function addLinkAttachment(req: AuthRequest, res: Response) {
+  try {
+    const { id: interactionId } = req.params;
+    const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    const rawTitle = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    if (!/^https?:\/\//i.test(rawUrl)) {
+      return res.status(400).json({ error: 'A valid http(s) link is required' });
+    }
+
+    const interaction = await prisma.interaction.findUnique({ where: { id: interactionId } });
+    if (!interaction || interaction.deletedAt) return res.status(404).json({ error: 'Interaction not found' });
+
+    const att = await prisma.interactionAttachment.create({
+      data: {
+        interactionId,
+        filename: rawTitle || deriveLinkTitle(rawUrl),
+        mimeType: 'text/uri-list',
+        fileData: rawUrl, // the link itself, stored as plain text
+        extractedText: '',
+        source: 'drive',
+        uploadedByUserId: req.user?.userId || null,
+      },
+    });
+    return res.status(201).json(serialize(att));
+  } catch (err: any) {
+    console.error('[addLinkAttachment]', err);
+    return res.status(500).json({ error: err.message || 'Failed to add link' });
+  }
+}
+
 export async function listAttachments(req: AuthRequest, res: Response) {
   try {
     const { id: interactionId } = req.params;
@@ -161,6 +212,9 @@ export async function downloadAttachment(req: AuthRequest, res: Response) {
     const { attachmentId } = req.params;
     const att = await prisma.interactionAttachment.findUnique({ where: { id: attachmentId } });
     if (!att) return res.status(404).json({ error: 'Not found' });
+
+    // Link attachments aren't blobs — send the caller to the URL instead.
+    if (att.source === 'drive') return res.redirect(att.fileData);
 
     const buffer = Buffer.from(att.fileData, 'base64');
     res.setHeader('Content-Type', att.mimeType || 'application/octet-stream');

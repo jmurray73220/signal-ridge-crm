@@ -96,7 +96,7 @@ export function Government() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid #30363d' }}>
-                {['Organization', 'Parent Agency', 'Sub-Component', 'Type', 'Contacts', 'Active Initiatives', 'Last Interaction'].map(h => (
+                {['Organization', 'Parent Agency', 'Sub-Component', 'Type', 'Contacts', 'Active Initiatives', 'Last Meeting Note'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
                 ))}
                 <th className="w-8" />

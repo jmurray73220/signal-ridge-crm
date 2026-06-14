@@ -179,7 +179,7 @@ export function LogInteractionModal({ defaultContactId, defaultEntityId, default
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
       <div className="w-full max-w-2xl rounded-xl overflow-hidden" style={{ background: '#1c2333', border: '1px solid #30363d', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #30363d' }}>
-          <h2 className="text-base font-semibold" style={{ color: '#e6edf3' }}>Log Interaction</h2>
+          <h2 className="text-base font-semibold" style={{ color: '#e6edf3' }}>Log Meeting Note</h2>
           <button onClick={onClose} style={{ color: '#8b949e' }}><X size={18} /></button>
         </div>
 
@@ -385,7 +385,7 @@ export function LogInteractionModal({ defaultContactId, defaultEntityId, default
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? 'Saving…' : 'Log Interaction'}
+              {loading ? 'Saving…' : 'Log Meeting Note'}
             </button>
           </div>
         </form>

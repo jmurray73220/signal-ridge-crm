@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Edit2, Trash2, MessageSquare, Target,
@@ -42,7 +42,13 @@ export function EntityDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>('people');
+  // Active tab lives in the URL (?tab=) so navigating into a contact and back
+  // returns to the same tab (e.g. a client's Tagged Contacts), not the default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const VALID_TABS: Tab[] = ['people', 'contacts', 'initiatives', 'interactions', 'tasks', 'briefings'];
+  const urlTab = searchParams.get('tab') as Tab | null;
+  const tab: Tab = urlTab && VALID_TABS.includes(urlTab) ? urlTab : 'people';
+  const setTab = (t: Tab) => setSearchParams(prev => { prev.set('tab', t); return prev; }, { replace: true });
   const [showEdit, setShowEdit] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showLogInteraction, setShowLogInteraction] = useState(false);
@@ -97,7 +103,7 @@ export function EntityDetail() {
       qc.invalidateQueries({ queryKey: ['entity', id] });
       qc.invalidateQueries({ queryKey: ['interactions'] });
       setConfirmDeleteInteractionId(null);
-      toast.success('Interaction deleted');
+      toast.success('Meeting note deleted');
     },
     onError: () => toast.error('Failed to delete interaction'),
   });
@@ -241,7 +247,7 @@ export function EntityDetail() {
             {user?.role !== 'Viewer' && (
               <>
                 <button onClick={() => setShowLogInteraction(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                  <MessageSquare size={14} /> Log Interaction
+                  <MessageSquare size={14} /> Log Meeting Note
                 </button>
                 <button onClick={() => setShowEdit(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
                   <Edit2 size={14} /> Edit
@@ -300,7 +306,7 @@ export function EntityDetail() {
                 ['people', isClient ? 'People' : 'People', contacts.length],
                 ...(isClient ? [['contacts', 'Tagged Contacts', taggedContacts.length] as [Tab, string, number]] : []),
                 ['initiatives', 'Initiatives', allInitiatives.length],
-                ['interactions', 'Interactions', interactions.length],
+                ['interactions', 'Meeting Notes', interactions.length],
                 ['tasks', 'Tasks', tasks.length],
                 ...(isOffice || isClient ? [['briefings', 'Past Briefings', briefingDocs.length] as [Tab, string, number]] : []),
               ] as [Tab, string, number][]).map(([t, label, count]) => (
@@ -340,7 +346,7 @@ export function EntityDetail() {
                     <table className="w-full">
                       <thead>
                         <tr style={{ borderBottom: '1px solid #30363d' }}>
-                          {['Name', 'Rank / Title', 'Tags', 'Last Interaction'].map(h => (
+                          {['Name', 'Rank / Title', 'Tags', 'Last Meeting Note'].map(h => (
                             <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: '#8b949e' }}>{h}</th>
                           ))}
                         </tr>
@@ -556,14 +562,14 @@ export function EntityDetail() {
           {user?.role !== 'Viewer' && (
             <div className="flex justify-end mb-3">
               <button onClick={() => setShowLogInteraction(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                <Plus size={14} /> Log Interaction
+                <Plus size={14} /> Log Meeting Note
               </button>
             </div>
           )}
           {interactions.length === 0 ? (
             <div className="card text-center py-10">
               <MessageSquare size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No interactions logged for this organization.</p>
+              <p className="text-sm" style={{ color: '#8b949e' }}>No meeting notes logged for this organization.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -716,7 +722,7 @@ export function EntityDetail() {
             setShowLogInteraction(false);
             qc.invalidateQueries({ queryKey: ['entity', id] });
             qc.invalidateQueries({ queryKey: ['interactions'] });
-            toast.success('Interaction logged');
+            toast.success('Meeting note logged');
           }}
         />
       )}

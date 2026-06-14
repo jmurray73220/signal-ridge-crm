@@ -88,7 +88,7 @@ export function ContactDetail() {
       qc.invalidateQueries({ queryKey: ['contact', id] });
       qc.invalidateQueries({ queryKey: ['interactions'] });
       setConfirmDeleteInteractionId(null);
-      toast.success('Interaction deleted');
+      toast.success('Meeting note deleted');
     },
     onError: () => toast.error('Failed to delete interaction'),
   });
@@ -116,9 +116,13 @@ export function ContactDetail() {
   return (
     <div>
       {/* Back */}
-      <Link to="/contacts" className="flex items-center gap-1.5 text-sm mb-4" style={{ color: '#8b949e', textDecoration: 'none' }}>
-        <ArrowLeft size={14} /> Back to Contacts
-      </Link>
+      <button
+        onClick={() => { if (window.history.length > 1) navigate(-1); else navigate('/contacts'); }}
+        className="flex items-center gap-1.5 text-sm mb-4"
+        style={{ color: '#8b949e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+      >
+        <ArrowLeft size={14} /> Back
+      </button>
 
       {/* Header */}
       <div className="card mb-6">
@@ -240,7 +244,7 @@ export function ContactDetail() {
                   onClick={() => setShowLogInteraction(true)}
                   className="btn-secondary flex items-center gap-1.5 text-sm"
                 >
-                  <MessageSquare size={14} /> Log Interaction
+                  <MessageSquare size={14} /> Log Meeting Note
                 </button>
                 <button
                   onClick={() => setShowEdit(true)}
@@ -281,7 +285,7 @@ export function ContactDetail() {
       {/* Tabs */}
       <div className="flex gap-1 mb-4" style={{ borderBottom: '1px solid #30363d' }}>
         {([
-          ['interactions', 'Interactions', interactions.length],
+          ['interactions', 'Meeting Notes', interactions.length],
           ['initiatives', 'Initiatives', initiatives.length],
           ['tasks', 'Tasks', tasks.length],
         ] as [Tab, string, number][]).map(([t, label, count]) => (
@@ -310,14 +314,14 @@ export function ContactDetail() {
                 onClick={() => setShowLogInteraction(true)}
                 className="btn-secondary flex items-center gap-1.5 text-sm"
               >
-                <Plus size={14} /> Log Interaction
+                <Plus size={14} /> Log Meeting Note
               </button>
             </div>
           )}
           {interactions.length === 0 ? (
             <div className="card text-center py-10">
               <MessageSquare size={32} className="mx-auto mb-3" style={{ color: '#30363d' }} />
-              <p className="text-sm" style={{ color: '#8b949e' }}>No interactions logged yet.</p>
+              <p className="text-sm" style={{ color: '#8b949e' }}>No meeting notes logged yet.</p>
             </div>
           ) : interactions.map((i: any) => {
             const attachCount = i._count?.attachments || 0;
@@ -493,7 +497,7 @@ export function ContactDetail() {
             setShowLogInteraction(false);
             qc.invalidateQueries({ queryKey: ['contact', id] });
             qc.invalidateQueries({ queryKey: ['interactions'] });
-            toast.success('Interaction logged');
+            toast.success('Meeting note logged');
           }}
         />
       )}

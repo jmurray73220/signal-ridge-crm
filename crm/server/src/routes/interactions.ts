@@ -11,6 +11,7 @@ import {
 import {
   uploadAttachmentMultipart,
   uploadAttachmentJson,
+  addLinkAttachment,
   listAttachments,
   downloadAttachment,
   getAttachmentText,
@@ -32,6 +33,7 @@ router.delete('/:id', requireEditor, deleteInteraction);
 router.get('/:id/attachments', listAttachments);
 router.post('/:id/attachments', requireEditor, upload.single('file'), uploadAttachmentMultipart);
 router.post('/:id/attachments/json', requireEditor, uploadAttachmentJson);
+router.post('/:id/attachments/link', requireEditor, addLinkAttachment);
 router.get('/attachments/:attachmentId/download', downloadAttachment);
 router.get('/attachments/:attachmentId/text', getAttachmentText);
 router.delete('/attachments/:attachmentId', requireEditor, deleteAttachment);

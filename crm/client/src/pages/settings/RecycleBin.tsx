@@ -8,7 +8,7 @@ const TYPE_LABELS: Record<string, string> = {
   Contact: 'Contacts',
   Entity: 'Organizations',
   Initiative: 'Initiatives',
-  Interaction: 'Interactions',
+  Interaction: 'Meeting Notes',
   Task: 'Tasks',
   Reminder: 'Reminders',
   WorkflowTrack: 'Workflow Tracks',

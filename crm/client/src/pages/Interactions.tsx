@@ -80,7 +80,7 @@ export function Interactions() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['interactions'] });
       setConfirmDeleteId(null);
-      toast.success('Interaction deleted');
+      toast.success('Meeting note deleted');
     },
     onError: () => toast.error('Failed to delete interaction'),
   });
@@ -114,8 +114,8 @@ export function Interactions() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: '#e6edf3' }}>Interactions</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#8b949e' }}>{interactions.length} total interactions logged</p>
+          <h1 className="text-2xl font-semibold" style={{ color: '#e6edf3' }}>Meeting Notes</h1>
+          <p className="text-sm mt-0.5" style={{ color: '#8b949e' }}>{interactions.length} total meeting notes logged</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleExport} className="btn-secondary flex items-center gap-1.5 text-sm">
@@ -123,7 +123,7 @@ export function Interactions() {
           </button>
           {user?.role !== 'Viewer' && (
             <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-1.5 text-sm">
-              <Plus size={14} /> Log Interaction
+              <Plus size={14} /> Log Meeting Note
             </button>
           )}
         </div>
@@ -177,7 +177,7 @@ export function Interactions() {
         <div className="card text-center py-16">
           <MessageSquare size={48} className="mx-auto mb-4" style={{ color: '#30363d' }} />
           <p className="text-sm mb-4" style={{ color: '#8b949e' }}>
-            {search || filterType ? 'No interactions match your filters.' : 'No interactions logged yet.'}
+            {search || filterType ? 'No meeting notes match your filters.' : 'No meeting notes logged yet.'}
           </p>
           {!search && !filterType && user?.role !== 'Viewer' && (
             <button onClick={() => setShowModal(true)} className="btn-primary text-sm">Log First Interaction</button>
@@ -280,14 +280,14 @@ export function Interactions() {
         </div>
       )}
 
-      {/* Log Interaction Modal */}
+      {/* Log Meeting Note Modal */}
       {showModal && (
         <LogInteractionModal
           onClose={() => setShowModal(false)}
           onSave={() => {
             setShowModal(false);
             qc.invalidateQueries({ queryKey: ['interactions'] });
-            toast.success('Interaction logged');
+            toast.success('Meeting note logged');
           }}
         />
       )}
