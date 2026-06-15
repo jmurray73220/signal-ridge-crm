@@ -2,7 +2,7 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
-import { getClientScope, interactionEntityScope } from '../services/clientScope';
+import { getClientScope, interactionScope } from '../services/clientScope';
 
 export async function getInteractions(req: AuthRequest, res: Response) {
   const { type, entityId, contactId, initiativeId, from, to } = req.query;
@@ -24,7 +24,7 @@ export async function getInteractions(req: AuthRequest, res: Response) {
     const scope = await getClientScope(req);
     if (scope) {
       if (!scope.clientId) return res.json([]);
-      where.AND = [{ OR: interactionEntityScope(scope.clientId) }];
+      where.AND = [{ OR: interactionScope(scope) }];
     }
     const interactions = await prisma.interaction.findMany({
       where,
@@ -50,7 +50,7 @@ export async function getInteraction(req: AuthRequest, res: Response) {
     if (scope) {
       if (!scope.clientId) return res.status(404).json({ error: 'Interaction not found' });
       const allowed = await prisma.interaction.findFirst({
-        where: { AND: [{ id }, { OR: interactionEntityScope(scope.clientId) }] },
+        where: { AND: [{ id }, { OR: interactionScope(scope) }] },
         select: { id: true },
       });
       if (!allowed) return res.status(404).json({ error: 'Interaction not found' });

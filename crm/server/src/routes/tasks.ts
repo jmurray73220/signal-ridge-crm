@@ -1,11 +1,10 @@
 import { Router } from 'express';
-import { requireAuth, requireEditor, requireAdmin, denyClientUsers } from '../middleware/auth';
+import { requireAuth, requireEditor, requireAdmin } from '../middleware/auth';
 import { getTasks, createTask, updateTask, deleteTask } from '../controllers/tasksController';
 
 const router = Router();
 
 router.use(requireAuth);
-router.use(denyClientUsers); // tasks are internal-only
 
 router.get('/', getTasks);
 router.post('/', requireEditor, createTask);

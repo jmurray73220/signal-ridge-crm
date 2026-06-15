@@ -41,8 +41,8 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ children, adminOnly = false, clientAllowed = false }: { children: ReactNode; adminOnly?: boolean; clientAllowed?: boolean }) {
-  const { user, loading, isClient } = useAuth();
+function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -60,10 +60,6 @@ function ProtectedRoute({ children, adminOnly = false, clientAllowed = false }: 
     if (typeof window !== 'undefined') window.location.replace('/workflow/');
     return null;
   }
-  // Client logins get a read-only, scoped view: only the pages explicitly
-  // marked clientAllowed. Everything else (dashboard, tasks, budgets, settings,
-  // entity directories) bounces to their contacts list.
-  if (isClient && !clientAllowed) return <Navigate to="/contacts" replace />;
   if (adminOnly && user.role !== 'Admin') return <Navigate to="/" replace />;
 
   return <Layout>{children}</Layout>;
@@ -83,11 +79,11 @@ function AppRoutes() {
       />
       <Route
         path="/contacts"
-        element={<ProtectedRoute clientAllowed><Contacts /></ProtectedRoute>}
+        element={<ProtectedRoute><Contacts /></ProtectedRoute>}
       />
       <Route
         path="/contacts/:id"
-        element={<ProtectedRoute clientAllowed><ContactDetail /></ProtectedRoute>}
+        element={<ProtectedRoute><ContactDetail /></ProtectedRoute>}
       />
       <Route
         path="/congressional"
@@ -107,19 +103,19 @@ function AppRoutes() {
       />
       <Route
         path="/entities/:id"
-        element={<ProtectedRoute clientAllowed><EntityDetail /></ProtectedRoute>}
+        element={<ProtectedRoute><EntityDetail /></ProtectedRoute>}
       />
       <Route
         path="/initiatives"
-        element={<ProtectedRoute clientAllowed><Initiatives /></ProtectedRoute>}
+        element={<ProtectedRoute><Initiatives /></ProtectedRoute>}
       />
       <Route
         path="/initiatives/:id"
-        element={<ProtectedRoute clientAllowed><InitiativeDetail /></ProtectedRoute>}
+        element={<ProtectedRoute><InitiativeDetail /></ProtectedRoute>}
       />
       <Route
         path="/interactions"
-        element={<ProtectedRoute clientAllowed><Interactions /></ProtectedRoute>}
+        element={<ProtectedRoute><Interactions /></ProtectedRoute>}
       />
       <Route
         path="/tasks"
@@ -151,7 +147,7 @@ function AppRoutes() {
       />
       <Route
         path="/settings/account"
-        element={<ProtectedRoute clientAllowed><SettingsLayout><Account /></SettingsLayout></ProtectedRoute>}
+        element={<ProtectedRoute><SettingsLayout><Account /></SettingsLayout></ProtectedRoute>}
       />
       <Route
         path="/settings/gmail"

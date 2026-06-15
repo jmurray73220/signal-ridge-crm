@@ -6,6 +6,7 @@ const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { AuthRequest } from '../types';
 import { searchAwards } from '../services/usaSpendingService';
 import { searchOpportunities } from '../services/samGovService';
+import { getClientScope } from '../services/clientScope';
 
 // ─── Document Library ────────────────────────────────────────────────────────
 
@@ -68,6 +69,8 @@ export async function uploadDocument(req: AuthRequest, res: Response) {
 }
 
 export async function listDocuments(req: AuthRequest, res: Response) {
+  // Budget library is firm-internal; client logins see it empty.
+  if (await getClientScope(req)) return res.json([]);
   try {
     const docs = await prisma.budgetDocument.findMany({
       select: {
@@ -322,6 +325,7 @@ export async function updateConversation(req: AuthRequest, res: Response) {
 }
 
 export async function getConversations(req: AuthRequest, res: Response) {
+  if (await getClientScope(req)) return res.json([]);
   const { documentId } = req.query;
 
   try {

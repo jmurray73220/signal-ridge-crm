@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { requireAuth, denyClientUsers } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { generateEntityBriefing, generateContactBriefing, generateClientMeetingBriefing, extractDraftFromReferences } from '../services/briefing';
 import { generateBriefingDocx } from '../services/briefingDocx';
 import { findMember, fetchMemberPortrait } from '../services/memberLookup';
@@ -9,7 +9,6 @@ import { AuthRequest } from '../types';
 const router = Router();
 
 router.use(requireAuth);
-router.use(denyClientUsers); // internal briefing generation (reads firm-wide CRM data)
 
 router.get('/entity/:id', async (req: AuthRequest, res: Response) => {
   try {

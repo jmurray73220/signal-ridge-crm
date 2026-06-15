@@ -72,21 +72,10 @@ const sections: NavSection[] = [
   },
 ];
 
-// Pages a client login is allowed to see in the nav. Everything else (entity
-// directories, tasks, reminders, budget analyzer, gmail, tags) is internal-only.
-const CLIENT_NAV_PATHS = new Set(['/contacts', '/initiatives', '/interactions']);
-
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
-  const { user, isClient, logout } = useAuth();
-
-  const visibleSections = sections
-    .map(section => ({
-      ...section,
-      items: section.items.filter(item => !isClient || CLIENT_NAV_PATHS.has(item.path)),
-    }))
-    .filter(section => section.items.length > 0);
+  const { user, logout } = useAuth();
 
   const { data: crmSettings } = useQuery({
     queryKey: ['crm-settings'],
@@ -98,7 +87,7 @@ export function Sidebar() {
     queryKey: ['gmail-status'],
     queryFn: () => gmailApi.status().then(r => r.data),
     refetchInterval: 60_000,
-    enabled: !!user && !isClient, // gmail is internal-only
+    enabled: !!user,
   });
   const gmailBadge = gmailStatus?.connected ? (gmailStatus.pendingCount ?? 0) : 0;
 
@@ -166,7 +155,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-3 overflow-y-auto">
-        {visibleSections.map((section) => (
+        {sections.map((section) => (
           <div key={section.title || '_top'}>
             {section.title && !collapsed && (
               <div className="px-3 py-2 mt-2">

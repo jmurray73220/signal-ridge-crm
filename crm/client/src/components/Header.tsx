@@ -3,7 +3,6 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Search, X, CheckSquare, Settings } from 'lucide-react';
 import { searchApi } from '../api';
 import { EntityTypeBadge } from './EntityTypeBadge';
-import { useAuth } from '../contexts/AuthContext';
 import type { Contact, Entity, Initiative } from '../types';
 
 interface SearchResults {
@@ -20,7 +19,6 @@ export function Header() {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { isClient } = useAuth();
   const debounceRef = useRef<any>(null);
 
   useEffect(() => {
@@ -199,19 +197,17 @@ export function Header() {
 
       {/* Top-right nav items */}
       <div className="flex items-center gap-1 ml-auto">
-        {!isClient && (
-          <Link
-            to="/tasks"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors"
-            style={{
-              color: isActive('/tasks') ? '#c9a84c' : '#8b949e',
-              background: isActive('/tasks') ? 'rgba(201,168,76,0.1)' : 'transparent',
-              textDecoration: 'none',
-            }}
-          >
-            <CheckSquare size={15} /> Tasks
-          </Link>
-        )}
+        <Link
+          to="/tasks"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors"
+          style={{
+            color: isActive('/tasks') ? '#c9a84c' : '#8b949e',
+            background: isActive('/tasks') ? 'rgba(201,168,76,0.1)' : 'transparent',
+            textDecoration: 'none',
+          }}
+        >
+          <CheckSquare size={15} /> Tasks
+        </Link>
         <Link
           to="/settings/account"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors"

@@ -3,7 +3,7 @@ import prisma from '../services/prisma';
 import { rawPrisma } from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-import { getClientScope, initiativeEntityScope } from '../services/clientScope';
+import { getClientScope, initiativeScope } from '../services/clientScope';
 
 export async function getInitiatives(req: AuthRequest, res: Response) {
   const { status, priority, entity } = req.query;
@@ -11,16 +11,18 @@ export async function getInitiatives(req: AuthRequest, res: Response) {
   if (status) where.status = status as string;
   if (priority) where.priority = priority as string;
   if (entity) {
-    where.OR = initiativeEntityScope(entity as string);
+    where.OR = [
+      { primaryEntityId: entity as string },
+      { entities: { some: { entityId: entity as string } } },
+    ];
   }
 
   try {
     const scope = await getClientScope(req);
     if (scope) {
       if (!scope.clientId) return res.json([]);
-      // Limit to initiatives tied to the client's entity (AND'd with any
-      // other filters above).
-      where.AND = [{ OR: initiativeEntityScope(scope.clientId) }];
+      // Limit to the client's initiatives (tagged or linked to their entity).
+      where.AND = [{ OR: initiativeScope(scope) }];
     }
     const initiatives = await prisma.initiative.findMany({
       where,
@@ -43,7 +45,7 @@ export async function getInitiative(req: AuthRequest, res: Response) {
     if (scope) {
       if (!scope.clientId) return res.status(404).json({ error: 'Initiative not found' });
       const allowed = await prisma.initiative.findFirst({
-        where: { AND: [{ id }, { OR: initiativeEntityScope(scope.clientId) }] },
+        where: { AND: [{ id }, { OR: initiativeScope(scope) }] },
         select: { id: true },
       });
       if (!allowed) return res.status(404).json({ error: 'Initiative not found' });

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
-import { getClientScope, getClientVisibleEntityIds } from '../services/clientScope';
+import { getClientScope, contactScope, entityScope, initiativeScope } from '../services/clientScope';
 
 
 export async function globalSearch(req: AuthRequest, res: Response) {
@@ -18,12 +18,8 @@ export async function globalSearch(req: AuthRequest, res: Response) {
   if (scope && !scope.clientId) {
     return res.json({ contacts: [], entities: [], initiatives: [] });
   }
-  const cid = scope?.clientId;
   const withScope = (textOr: any[], scopeOr: any[]) =>
-    cid ? { AND: [{ OR: textOr }, { OR: scopeOr }] } : { OR: textOr };
-  // Entities expand to the client's own entity plus the entities their
-  // initiatives/interactions reference.
-  const visibleEntityIds = cid ? await getClientVisibleEntityIds(cid) : null;
+    scope ? { AND: [{ OR: textOr }, { OR: scopeOr }] } : { OR: textOr };
 
   try {
     const [contacts, entities, initiatives] = await Promise.all([
@@ -38,7 +34,7 @@ export async function globalSearch(req: AuthRequest, res: Response) {
             { bio: { contains: query, mode: 'insensitive' } },
             { tags: { contains: query, mode: 'insensitive' } },
           ],
-          [{ entityId: cid! }, { tags: { contains: scope?.clientName } }],
+          scope ? contactScope(scope) : [],
         ),
         include: { entity: { select: { id: true, name: true, entityType: true, chamber: true, governmentType: true } } },
         take: 10,
@@ -56,7 +52,7 @@ export async function globalSearch(req: AuthRequest, res: Response) {
             { address: { contains: query, mode: 'insensitive' } },
             { tags: { contains: query, mode: 'insensitive' } },
           ],
-          [{ id: { in: visibleEntityIds ?? [] } }],
+          scope ? entityScope(scope) : [],
         ),
         take: 10,
       }),
@@ -66,7 +62,7 @@ export async function globalSearch(req: AuthRequest, res: Response) {
             { title: { contains: query, mode: 'insensitive' } },
             { description: { contains: query, mode: 'insensitive' } },
           ],
-          [{ primaryEntityId: cid! }, { entities: { some: { entityId: cid! } } }],
+          scope ? initiativeScope(scope) : [],
         ),
         include: { primaryEntity: { select: { id: true, name: true, entityType: true } } },
         take: 10,

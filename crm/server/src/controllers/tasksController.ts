@@ -2,8 +2,11 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
+import { getClientScope } from '../services/clientScope';
 
 export async function getTasks(req: AuthRequest, res: Response) {
+  // Tasks are firm-internal; client logins see them empty (same UI, no data).
+  if (await getClientScope(req)) return res.json([]);
   const { contactId, entityId, initiativeId, completed } = req.query;
   const where: any = {};
 

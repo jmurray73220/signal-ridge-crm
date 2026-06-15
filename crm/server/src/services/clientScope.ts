@@ -6,11 +6,12 @@ import { AuthRequest, JwtPayload } from '../types';
  *
  * Internal staff (Admin/Editor/Viewer) have no `workflowClientId`. External
  * client logins are tied to a specific WorkflowClient that maps to a single CRM
- * Entity. Those users must only ever see/touch data belonging to that entity.
+ * Entity (e.g. "Shadowgrid"). Such users see the SAME CRM as staff, but every
+ * data view is filtered to that client's records: anything tagged with the
+ * client name OR linked to the client entity.
  *
- * `isClientUser` is a cheap, JWT-only check used by middleware to block writes
- * and gate internal-only routes. `getClientScope` does the DB lookup needed to
- * resolve the actual CRM entity id for read filtering.
+ * `isClientUser` is a cheap JWT-only check; `getClientScope` resolves the
+ * client's entity id + name for filtering.
  */
 
 export function isClientUser(
@@ -23,19 +24,14 @@ export function isClientUser(
 
 export interface ClientScope {
   /**
-   * The CRM Entity id this client is limited to, or null when their workflow
-   * client isn't linked to a CRM entity yet — in which case they should see
-   * nothing rather than everything.
+   * The CRM Entity id this client maps to, or null when their workflow client
+   * isn't linked to a CRM entity yet — in which case they should see nothing.
    */
   clientId: string | null;
   clientName: string | null;
 }
 
-/**
- * Returns null for unscoped (internal staff) callers, or a ClientScope object
- * for client users. Callers should treat a non-null scope with a null
- * `clientId` as "return no rows".
- */
+/** Returns null for unscoped (internal staff) callers, or a ClientScope. */
 export async function getClientScope(req: AuthRequest): Promise<ClientScope | null> {
   if (!isClientUser(req.user)) return null;
   const wfClient = await prisma.workflowClient.findUnique({
@@ -45,53 +41,42 @@ export async function getClientScope(req: AuthRequest): Promise<ClientScope | nu
   return { clientId: wfClient?.clientId ?? null, clientName: wfClient?.name ?? null };
 }
 
-/** OR conditions limiting initiatives to those tied to a given entity. */
-export function initiativeEntityScope(entityId: string) {
+// ── Per-model "belongs to this client" OR-conditions ────────────────────────
+// Each returns an array of Prisma where-conditions; a record matches if ANY
+// holds (tagged with the client name, or linked to the client entity). Only
+// Contact and Entity carry a `tags` field; Initiative/Interaction inherit the
+// tag via their related entities/contacts.
+
+export function contactScope(s: ClientScope): any[] {
   return [
-    { primaryEntityId: entityId },
-    { entities: { some: { entityId } } },
+    { entityId: s.clientId },
+    { tags: { contains: s.clientName } },
   ];
 }
 
-/** OR conditions limiting interactions to those tied to a given entity. */
-export function interactionEntityScope(entityId: string) {
+export function entityScope(s: ClientScope): any[] {
   return [
-    { entityId },
-    { initiative: { primaryEntityId: entityId } },
-    { contacts: { some: { contact: { entityId } } } },
+    { id: s.clientId },
+    { tags: { contains: s.clientName } },
   ];
 }
 
-/**
- * The set of CRM Entity ids a client may view: their own entity PLUS every
- * entity referenced by their own initiatives and interactions (e.g. the
- * congressional offices they're engaging). The client can open those entities'
- * pages, but their roll-ups are still filtered to the client's own activity by
- * the entity controller — so another client's activity at a shared office is
- * never exposed.
- */
-export async function getClientVisibleEntityIds(clientId: string): Promise<string[]> {
-  const ids = new Set<string>([clientId]);
+export function initiativeScope(s: ClientScope): any[] {
+  return [
+    { primaryEntityId: s.clientId },
+    { entities: { some: { entityId: s.clientId } } },
+    { primaryEntity: { tags: { contains: s.clientName } } },
+    { entities: { some: { entity: { tags: { contains: s.clientName } } } } },
+  ];
+}
 
-  const initiatives = await prisma.initiative.findMany({
-    where: { OR: initiativeEntityScope(clientId) },
-    select: { primaryEntityId: true, entities: { select: { entityId: true } } },
-  });
-  for (const i of initiatives) {
-    if (i.primaryEntityId) ids.add(i.primaryEntityId);
-    for (const e of i.entities) ids.add(e.entityId);
-  }
-
-  const interactions = await prisma.interaction.findMany({
-    where: { OR: interactionEntityScope(clientId) },
-    select: { entityId: true, contacts: { select: { contact: { select: { entityId: true } } } } },
-  });
-  for (const x of interactions) {
-    if (x.entityId) ids.add(x.entityId);
-    for (const c of x.contacts) {
-      if (c.contact?.entityId) ids.add(c.contact.entityId);
-    }
-  }
-
-  return [...ids];
+export function interactionScope(s: ClientScope): any[] {
+  return [
+    { entityId: s.clientId },
+    { entity: { tags: { contains: s.clientName } } },
+    { initiative: { primaryEntityId: s.clientId } },
+    { initiative: { primaryEntity: { tags: { contains: s.clientName } } } },
+    { contacts: { some: { contact: { entityId: s.clientId } } } },
+    { contacts: { some: { contact: { tags: { contains: s.clientName } } } } },
+  ];
 }

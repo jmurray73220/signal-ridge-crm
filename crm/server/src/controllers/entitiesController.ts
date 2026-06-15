@@ -4,21 +4,26 @@ import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
 import {
   getClientScope,
-  getClientVisibleEntityIds,
-  initiativeEntityScope,
-  interactionEntityScope,
+  entityScope,
+  contactScope,
+  initiativeScope,
+  interactionScope,
 } from '../services/clientScope';
 
 /**
- * For a client login, returns true when the given entity id is NOT their own
- * client entity (strict, own-only). Used by the sub-list endpoints
- * (contacts/initiatives/interactions of an entity), which would otherwise
- * expose a referenced entity's full roster/activity. Returns false for staff.
+ * For a client login, returns true when the given entity is NOT in the client's
+ * scope (not their own entity and not tagged with the client name). Returns
+ * false for internal staff (no scoping).
  */
 async function clientBlocksEntity(req: AuthRequest, id: string): Promise<boolean> {
   const scope = await getClientScope(req);
   if (!scope) return false;
-  return id !== scope.clientId;
+  if (!scope.clientId) return true;
+  const ok = await prisma.entity.findFirst({
+    where: { AND: [{ id }, { OR: entityScope(scope) }] },
+    select: { id: true },
+  });
+  return !ok;
 }
 
 function parseEntityArrayFields(entity: any) {
@@ -42,9 +47,7 @@ export async function getEntities(req: AuthRequest, res: Response) {
     const scope = await getClientScope(req);
     if (scope) {
       if (!scope.clientId) return res.json([]);
-      // Clients see their own entity plus the entities their initiatives /
-      // interactions reference.
-      where.id = { in: await getClientVisibleEntityIds(scope.clientId) };
+      where.AND = [{ OR: entityScope(scope) }];
     }
     const entities = await prisma.entity.findMany({
       where,
@@ -68,66 +71,26 @@ export async function getEntities(req: AuthRequest, res: Response) {
   }
 }
 
-/**
- * Detail view of a referenced (non-own) entity for a client login. Returns the
- * entity profile but limits every roll-up to the CLIENT's own activity with
- * that entity — never another client's initiatives/interactions or the firm's
- * full contact roster there.
- */
-async function getReferencedEntityForClient(res: Response, id: string, clientId: string) {
-  const entity = await prisma.entity.findUnique({
-    where: { id },
-    include: {
-      createdBy: { select: { firstName: true, lastName: true } },
-      updatedBy: { select: { firstName: true, lastName: true } },
-    },
-  });
-  if (!entity) return res.status(404).json({ error: 'Entity not found' });
-
-  const initiatives = await prisma.initiative.findMany({
-    where: { AND: [{ OR: initiativeEntityScope(clientId) }, { OR: initiativeEntityScope(id) }] },
-    include: { _count: { select: { contacts: true } } },
-  });
-
-  const interactions = await prisma.interaction.findMany({
-    where: {
-      deletedAt: null,
-      AND: [{ OR: interactionEntityScope(clientId) }, { OR: interactionEntityScope(id) }],
-    },
-    include: {
-      contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
-      initiative: { select: { id: true, title: true } },
-      _count: { select: { attachments: true } },
-    },
-    orderBy: { date: 'desc' },
-  });
-
-  return res.json({
-    ...parseEntityArrayFields(entity),
-    contacts: [],
-    initiatives,
-    initiativeLinks: [],
-    tasks: [],
-    interactions,
-  });
-}
-
 export async function getEntity(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
     const scope = await getClientScope(req);
-    if (scope) {
-      if (!scope.clientId) return res.status(404).json({ error: 'Entity not found' });
-      const visible = await getClientVisibleEntityIds(scope.clientId);
-      if (!visible.includes(id)) return res.status(404).json({ error: 'Entity not found' });
-      // Referenced (non-own) entities get a profile with client-scoped roll-ups.
-      if (id !== scope.clientId) return getReferencedEntityForClient(res, id, scope.clientId);
-      // Own entity falls through to the full detail below.
+    if (scope && await clientBlocksEntity(req, id)) {
+      return res.status(404).json({ error: 'Entity not found' });
     }
+    // For a client login every nested roll-up is filtered to the client's own
+    // records, so the page looks the same but shows only their data.
+    const contactWhere: any = scope ? { OR: contactScope(scope) } : undefined;
+    const initiativesWhere: any = scope
+      ? { AND: [{ primaryEntityId: id }, { OR: initiativeScope(scope) }] }
+      : { primaryEntityId: id };
+    const initiativeLinksWhere: any = scope ? { initiative: { OR: initiativeScope(scope) } } : undefined;
+
     const entity = await prisma.entity.findUnique({
       where: { id },
       include: {
         contacts: {
+          where: contactWhere,
           include: {
             interactions: {
               include: { interaction: { select: { date: true } } },
@@ -137,10 +100,11 @@ export async function getEntity(req: AuthRequest, res: Response) {
           },
         },
         initiatives: {
-          where: { primaryEntityId: id },
+          where: initiativesWhere,
           include: { _count: { select: { contacts: true } } },
         },
         initiativeLinks: {
+          where: initiativeLinksWhere,
           include: {
             initiative: {
               include: {
@@ -168,14 +132,17 @@ export async function getEntity(req: AuthRequest, res: Response) {
     // tagged directly, AND interactions tagged only with a staffer (contact)
     // who works for this entity. So a meeting note logged against a
     // congressional staffer surfaces on the office's page automatically.
+    const interactionWhere: any = {
+      deletedAt: null,
+      OR: [
+        { entityId: id },
+        { contacts: { some: { contact: { entityId: id } } } },
+      ],
+    };
+    if (scope) interactionWhere.AND = [{ OR: interactionScope(scope) }];
+
     const interactions = await prisma.interaction.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          { entityId: id },
-          { contacts: { some: { contact: { entityId: id } } } },
-        ],
-      },
+      where: interactionWhere,
       include: {
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
         initiative: { select: { id: true, title: true } },
@@ -184,7 +151,10 @@ export async function getEntity(req: AuthRequest, res: Response) {
       orderBy: { date: 'desc' },
     });
 
-    return res.json({ ...parseEntityArrayFields(entity), interactions });
+    // Tasks are firm-internal; a client sees them empty everywhere.
+    const tasks = scope ? [] : (entity as any).tasks;
+
+    return res.json({ ...parseEntityArrayFields(entity), tasks, interactions });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }
@@ -344,8 +314,11 @@ export async function getEntityContacts(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
     if (await clientBlocksEntity(req, id)) return res.json([]);
+    const scope = await getClientScope(req);
+    const where: any = { entityId: id };
+    if (scope) where.AND = [{ OR: contactScope(scope) }];
     const contacts = await prisma.contact.findMany({
-      where: { entityId: id },
+      where,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
     return res.json(contacts.map(c => ({
@@ -362,13 +335,20 @@ export async function getEntityInitiatives(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
     if (await clientBlocksEntity(req, id)) return res.json([]);
+    const scope = await getClientScope(req);
+    const primaryWhere: any = scope
+      ? { AND: [{ primaryEntityId: id }, { OR: initiativeScope(scope) }] }
+      : { primaryEntityId: id };
+    const linkedWhere: any = scope
+      ? { entityId: id, initiative: { OR: initiativeScope(scope) } }
+      : { entityId: id };
     const [primary, linked] = await Promise.all([
       prisma.initiative.findMany({
-        where: { primaryEntityId: id },
+        where: primaryWhere,
         include: { _count: { select: { contacts: true } } },
       }),
       prisma.initiativeEntity.findMany({
-        where: { entityId: id },
+        where: linkedWhere,
         include: {
           initiative: { include: { _count: { select: { contacts: true } } } },
         },
@@ -386,14 +366,17 @@ export async function getEntityInteractions(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
     if (await clientBlocksEntity(req, id)) return res.json([]);
+    const scope = await getClientScope(req);
+    const where: any = {
+      deletedAt: null,
+      OR: [
+        { entityId: id },
+        { contacts: { some: { contact: { entityId: id } } } },
+      ],
+    };
+    if (scope) where.AND = [{ OR: interactionScope(scope) }];
     const interactions = await prisma.interaction.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          { entityId: id },
-          { contacts: { some: { contact: { entityId: id } } } },
-        ],
-      },
+      where,
       include: {
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
         initiative: { select: { id: true, title: true } },
