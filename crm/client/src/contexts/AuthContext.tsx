@@ -5,9 +5,16 @@ import type { User } from '../types';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /** External client login — scoped to a single client entity, read-only. */
+  isClient: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User>;
   logout: () => Promise<void>;
   refetchUser: () => Promise<void>;
+}
+
+/** Mirrors the server's isClientUser(): non-admin user tied to a workflow client. */
+export function isClientUser(user: User | null): boolean {
+  return !!user?.workflowClientId && user.role !== 'Admin';
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -47,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refetchUser = fetchUser;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refetchUser }}>
+    <AuthContext.Provider value={{ user, loading, isClient: isClientUser(user), login, logout, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );

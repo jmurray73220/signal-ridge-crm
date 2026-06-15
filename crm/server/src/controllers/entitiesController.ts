@@ -2,6 +2,17 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
+import { getClientScope } from '../services/clientScope';
+
+/**
+ * For a client login, returns true when the given entity id is NOT their own
+ * client entity (i.e. access must be denied). Returns false for internal staff.
+ */
+async function clientBlocksEntity(req: AuthRequest, id: string): Promise<boolean> {
+  const scope = await getClientScope(req);
+  if (!scope) return false;
+  return id !== scope.clientId;
+}
 
 function parseEntityArrayFields(entity: any) {
   return {
@@ -21,6 +32,11 @@ export async function getEntities(req: AuthRequest, res: Response) {
   if (searchTerm) where.name = { contains: searchTerm };
 
   try {
+    const scope = await getClientScope(req);
+    if (scope) {
+      if (!scope.clientId) return res.json([]);
+      where.id = scope.clientId; // clients only see their own entity
+    }
     const entities = await prisma.entity.findMany({
       where,
       include: {
@@ -46,6 +62,7 @@ export async function getEntities(req: AuthRequest, res: Response) {
 export async function getEntity(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    if (await clientBlocksEntity(req, id)) return res.status(404).json({ error: 'Entity not found' });
     const entity = await prisma.entity.findUnique({
       where: { id },
       include: {
@@ -265,6 +282,7 @@ export async function backfillClientSelfTags(_req: AuthRequest, res: Response) {
 export async function getEntityContacts(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    if (await clientBlocksEntity(req, id)) return res.json([]);
     const contacts = await prisma.contact.findMany({
       where: { entityId: id },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
@@ -282,6 +300,7 @@ export async function getEntityContacts(req: AuthRequest, res: Response) {
 export async function getEntityInitiatives(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    if (await clientBlocksEntity(req, id)) return res.json([]);
     const [primary, linked] = await Promise.all([
       prisma.initiative.findMany({
         where: { primaryEntityId: id },
@@ -305,6 +324,7 @@ export async function getEntityInitiatives(req: AuthRequest, res: Response) {
 export async function getEntityInteractions(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    if (await clientBlocksEntity(req, id)) return res.json([]);
     const interactions = await prisma.interaction.findMany({
       where: {
         deletedAt: null,

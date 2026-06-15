@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, denyClientUsers } from '../middleware/auth';
 import {
   getAuthUrl,
   handleCallback,
@@ -45,7 +45,7 @@ router.get('/auth/gmail/callback', async (req: Request, res: Response) => {
 
 // ─── Manual import (unchanged) ───────────────────────────────────────────────
 
-router.get('/api/gmail/search', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/api/gmail/search', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { q } = req.query;
   const accessToken = req.cookies?.gmail_token;
   if (!accessToken) return res.status(401).json({ error: 'Gmail not connected', needsAuth: true });
@@ -59,7 +59,7 @@ router.get('/api/gmail/search', requireAuth, async (req: AuthRequest, res: Respo
   }
 });
 
-router.get('/api/gmail/thread/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/api/gmail/thread/:id', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const accessToken = req.cookies?.gmail_token;
   if (!accessToken) return res.status(401).json({ error: 'Gmail not connected', needsAuth: true });
 
@@ -73,7 +73,7 @@ router.get('/api/gmail/thread/:id', requireAuth, async (req: AuthRequest, res: R
 
 // ─── Sync status ─────────────────────────────────────────────────────────────
 
-router.get('/api/gmail/status', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/api/gmail/status', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const connected = await isGmailConnected();
     const settings = await prisma.gmailSyncSettings.findUnique({ where: { id: 'singleton' } });
@@ -93,7 +93,7 @@ router.get('/api/gmail/status', requireAuth, async (req: AuthRequest, res: Respo
 
 // ─── Sync settings ───────────────────────────────────────────────────────────
 
-router.get('/api/gmail/settings', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/api/gmail/settings', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const settings = await prisma.gmailSyncSettings.findUnique({ where: { id: 'singleton' } });
     res.json(settings ?? { enabled: false, syncIntervalMinutes: 60, lastSyncAt: null });
@@ -102,7 +102,7 @@ router.get('/api/gmail/settings', requireAuth, async (req: AuthRequest, res: Res
   }
 });
 
-router.put('/api/gmail/settings', requireAuth, async (req: AuthRequest, res: Response) => {
+router.put('/api/gmail/settings', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { enabled, syncIntervalMinutes } = req.body;
 
   try {
@@ -127,7 +127,7 @@ router.put('/api/gmail/settings', requireAuth, async (req: AuthRequest, res: Res
 
 // ─── Manual sync trigger ─────────────────────────────────────────────────────
 
-router.post('/api/gmail/sync', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/sync', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const result = await runGmailSync();
     res.json({ message: `Sync complete. ${result.added} new email(s) added to review queue.`, ...result });
@@ -139,7 +139,7 @@ router.post('/api/gmail/sync', requireAuth, async (req: AuthRequest, res: Respon
 
 // ─── Pending review queue ────────────────────────────────────────────────────
 
-router.get('/api/gmail/pending', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/api/gmail/pending', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { status = 'pending' } = req.query;
 
   try {
@@ -184,7 +184,7 @@ router.get('/api/gmail/pending', requireAuth, async (req: AuthRequest, res: Resp
   }
 });
 
-router.post('/api/gmail/pending/:id/approve', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/pending/:id/approve', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
   try {
@@ -273,7 +273,7 @@ router.post('/api/gmail/pending/:id/approve', requireAuth, async (req: AuthReque
   }
 });
 
-router.patch('/api/gmail/pending/:id/contacts', requireAuth, async (req: AuthRequest, res: Response) => {
+router.patch('/api/gmail/pending/:id/contacts', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { contactIds } = req.body; // string[]
 
@@ -291,7 +291,7 @@ router.patch('/api/gmail/pending/:id/contacts', requireAuth, async (req: AuthReq
   }
 });
 
-router.post('/api/gmail/pending/:id/dismiss', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/pending/:id/dismiss', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
   try {
@@ -306,7 +306,7 @@ router.post('/api/gmail/pending/:id/dismiss', requireAuth, async (req: AuthReque
 });
 
 // Re-match contacts on all pending emails by checking From/To/CC against contact emails
-router.post('/api/gmail/rematch-contacts', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/rematch-contacts', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const accessToken = await getValidAccessToken();
     if (!accessToken) return res.status(400).json({ error: 'Gmail not connected' });
@@ -363,7 +363,7 @@ router.post('/api/gmail/rematch-contacts', requireAuth, async (req: AuthRequest,
 });
 
 // Re-summarize all pending emails in the review queue
-router.post('/api/gmail/resummarize-pending', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/resummarize-pending', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const accessToken = await getValidAccessToken();
     if (!accessToken) return res.status(400).json({ error: 'Gmail not connected' });
@@ -426,7 +426,7 @@ router.post('/api/gmail/resummarize-pending', requireAuth, async (req: AuthReque
 });
 
 // Re-summarize all existing Gmail interactions that only have snippets
-router.post('/api/gmail/resummarize', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/api/gmail/resummarize', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     const accessToken = await getValidAccessToken();
     if (!accessToken) return res.status(400).json({ error: 'Gmail not connected' });
@@ -497,7 +497,7 @@ router.post('/api/gmail/resummarize', requireAuth, async (req: AuthRequest, res:
   }
 });
 
-router.delete('/api/gmail/disconnect', requireAuth, async (req: AuthRequest, res: Response) => {
+router.delete('/api/gmail/disconnect', requireAuth, denyClientUsers, async (req: AuthRequest, res: Response) => {
   try {
     await prisma.gmailCredential.deleteMany({});
     stopBackgroundSync();

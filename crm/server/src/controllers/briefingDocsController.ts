@@ -3,6 +3,7 @@ import * as pdfParseModule from 'pdf-parse';
 import mammoth from 'mammoth';
 import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
+import { getClientScope } from '../services/clientScope';
 
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 
@@ -81,6 +82,14 @@ export async function listBriefingDocs(req: AuthRequest, res: Response) {
     if (officeId) where.officeId = officeId;
     if (clientId) where.clientId = clientId;
 
+    // Client logins only ever see their own client's briefing docs, regardless
+    // of any clientId query param.
+    const scope = await getClientScope(req);
+    if (scope) {
+      if (!scope.clientId) return res.json([]);
+      where.clientId = scope.clientId;
+    }
+
     const docs = await prisma.briefingDocument.findMany({
       where,
       include: {
@@ -107,9 +116,14 @@ export async function deleteBriefingDoc(req: AuthRequest, res: Response) {
 }
 
 // All distinct tags across briefing docs — for the tag-bank autocomplete
-export async function getBriefingDocTags(_req: AuthRequest, res: Response) {
+export async function getBriefingDocTags(req: AuthRequest, res: Response) {
   try {
-    const rows = await prisma.briefingDocument.findMany({ select: { tags: true } });
+    const scope = await getClientScope(req);
+    if (scope && !scope.clientId) return res.json([]);
+    const rows = await prisma.briefingDocument.findMany({
+      where: scope?.clientId ? { clientId: scope.clientId } : undefined,
+      select: { tags: true },
+    });
     const seen = new Set<string>();
     for (const r of rows) {
       try {

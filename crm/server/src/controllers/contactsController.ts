@@ -3,30 +3,22 @@ import prisma from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { formatBioSafe } from '../services/bioFormat';
 import { AuthRequest } from '../types';
+import { getClientScope } from '../services/clientScope';
 
 /**
- * Build the per-user contact scope. Users without a workflowClientId see all
- * contacts (current behavior). Users assigned to a workflow client are
- * limited to contacts whose primary entity is that client OR whose tags
- * include the client name (loose tag-based fallback for legacy contacts).
- * Returns null if the caller is unscoped, an array of OR conditions if
- * scoped, or an empty array signal (returned as []) if the workflow client
- * has no linked CRM entity.
+ * Build the per-user contact scope. Internal staff see all contacts. Client
+ * logins are limited to contacts whose primary entity is their client OR whose
+ * tags include the client name (loose tag-based fallback for legacy contacts).
+ * Returns null if the caller is unscoped, an array of OR conditions if scoped,
+ * or an empty array if the client has no linked CRM entity (→ see nothing).
  */
 async function buildClientScope(req: AuthRequest): Promise<any[] | null> {
-  const wfClientId = req.user?.workflowClientId;
-  if (!wfClientId) return null;
-  const wfClient = await prisma.workflowClient.findUnique({
-    where: { id: wfClientId },
-    select: { name: true, clientId: true },
-  });
-  if (!wfClient || !wfClient.clientId) {
-    // Workflow user not linked to a CRM entity → see nothing rather than everything.
-    return [];
-  }
+  const scope = await getClientScope(req);
+  if (!scope) return null;
+  if (!scope.clientId) return [];
   return [
-    { entityId: wfClient.clientId },
-    { tags: { contains: wfClient.name } },
+    { entityId: scope.clientId },
+    { tags: { contains: scope.clientName } },
   ];
 }
 
@@ -387,6 +379,12 @@ export async function deleteContact(req: AuthRequest, res: Response) {
 export async function getContactInteractions(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const scope = await buildClientScope(req);
+    if (scope !== null) {
+      if (scope.length === 0) return res.json([]);
+      const allowed = await prisma.contact.findFirst({ where: { AND: [{ id }, { OR: scope }] }, select: { id: true } });
+      if (!allowed) return res.json([]);
+    }
     const items = await prisma.interactionContact.findMany({
       where: { contactId: id },
       include: {
@@ -410,6 +408,12 @@ export async function getContactInteractions(req: AuthRequest, res: Response) {
 export async function getContactInitiatives(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const scope = await buildClientScope(req);
+    if (scope !== null) {
+      if (scope.length === 0) return res.json([]);
+      const allowed = await prisma.contact.findFirst({ where: { AND: [{ id }, { OR: scope }] }, select: { id: true } });
+      if (!allowed) return res.json([]);
+    }
     const items = await prisma.initiativeContact.findMany({
       where: { contactId: id },
       include: {
@@ -485,6 +489,8 @@ export async function importContacts(req: AuthRequest, res: Response) {
 export async function getContactTasks(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    // Tasks are internal-only; client logins never see them.
+    if (await getClientScope(req)) return res.json([]);
     const tasks = await prisma.task.findMany({
       where: { contactId: id },
       include: {

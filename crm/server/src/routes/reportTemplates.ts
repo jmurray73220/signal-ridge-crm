@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { requireAuth, requireEditor } from '../middleware/auth';
+import { requireAuth, requireEditor, denyClientUsers } from '../middleware/auth';
 import { listTemplates, uploadTemplate, deleteTemplate } from '../controllers/reportTemplateController';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
 
 router.use(requireAuth);
+router.use(denyClientUsers); // report templates are internal-only
 
 router.get('/', listTemplates);
 router.post('/upload', requireEditor, upload.single('file'), uploadTemplate);

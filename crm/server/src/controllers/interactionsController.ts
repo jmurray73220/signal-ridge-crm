@@ -2,6 +2,16 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
+import { getClientScope } from '../services/clientScope';
+
+/** OR conditions limiting interactions to those tied to a given entity. */
+function interactionEntityScope(entityId: string) {
+  return [
+    { entityId },
+    { initiative: { primaryEntityId: entityId } },
+    { contacts: { some: { contact: { entityId } } } },
+  ];
+}
 
 export async function getInteractions(req: AuthRequest, res: Response) {
   const { type, entityId, contactId, initiativeId, from, to } = req.query;
@@ -20,6 +30,11 @@ export async function getInteractions(req: AuthRequest, res: Response) {
   }
 
   try {
+    const scope = await getClientScope(req);
+    if (scope) {
+      if (!scope.clientId) return res.json([]);
+      where.AND = [{ OR: interactionEntityScope(scope.clientId) }];
+    }
     const interactions = await prisma.interaction.findMany({
       where,
       include: {
@@ -40,6 +55,15 @@ export async function getInteractions(req: AuthRequest, res: Response) {
 export async function getInteraction(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
+    const scope = await getClientScope(req);
+    if (scope) {
+      if (!scope.clientId) return res.status(404).json({ error: 'Interaction not found' });
+      const allowed = await prisma.interaction.findFirst({
+        where: { AND: [{ id }, { OR: interactionEntityScope(scope.clientId) }] },
+        select: { id: true },
+      });
+      if (!allowed) return res.status(404).json({ error: 'Interaction not found' });
+    }
     const interaction = await prisma.interaction.findUnique({
       where: { id },
       include: {

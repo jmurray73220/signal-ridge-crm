@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { requireAuth, requireEditor } from '../middleware/auth';
+import { requireAuth, requireEditor, denyClientUsers } from '../middleware/auth';
 import {
   uploadDocument,
   listDocuments,
@@ -20,6 +20,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB limit
 
 router.use(requireAuth);
+router.use(denyClientUsers); // budget analyzer is internal-only
 
 // Documents
 router.get('/', listDocuments);

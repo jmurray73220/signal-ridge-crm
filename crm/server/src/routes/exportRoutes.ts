@@ -1,11 +1,12 @@
 import { Router, Response } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, denyClientUsers } from '../middleware/auth';
 import { exportContacts, exportEntities, exportInteractions } from '../services/export';
 import { AuthRequest } from '../types';
 
 const router = Router();
 
 router.use(requireAuth);
+router.use(denyClientUsers); // bulk exports are internal-only
 
 router.get('/contacts', async (req: AuthRequest, res: Response) => {
   const csv = await exportContacts();
