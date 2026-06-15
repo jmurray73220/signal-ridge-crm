@@ -4,6 +4,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
 import { assertClientAccess } from '../middleware/workflowAuth';
+import { isSamGovUrl, extractSamNoticeId, fetchSamOpportunity } from '../services/samGovOpportunity';
+
+// Max characters of opportunity text fed to Claude. claude-opus-4-8 has a 1M
+// token context window (~4 chars/token), so 600k chars (~150k tokens) covers a
+// 100+ page solicitation plus attachments with room to spare. This is the
+// "read long files" budget — far above the old 60-80k cap.
+const EXTRACT_MAX_CHARS = 600_000;
 
 
 const LAYER_FRAMEWORK = `CAITIP is funded as four distinct layers, each paired to a funding vehicle:
@@ -607,42 +614,60 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
 
   let pageText = '';
   try {
-    const resp = await fetch(url, {
-      redirect: 'follow',
-      headers: {
-        // SAM.gov, DSIP, and most public solicitation hosts allow vanilla
-        // browser-style requests. Some agency portals will 403 here — we'll
-        // mark "blocked" and surface to the UI for a Bubba handoff.
-        'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
-        'Accept': 'text/html,application/xhtml+xml,application/pdf,*/*',
-      },
-    });
-    if (!resp.ok) {
-      await prisma.workflowTrack.update({
-        where: { id: trackId },
-        data: { aiExtractionStatus: 'blocked', aiExtractedAt: new Date() },
-      });
-      return;
+    // SAM.gov is a JS SPA — a plain fetch returns an empty shell. Use the
+    // official API to pull the description + attachment PDFs instead.
+    if (isSamGovUrl(url) && process.env.SAM_GOV_API_KEY) {
+      const noticeId = extractSamNoticeId(url);
+      if (noticeId) {
+        try {
+          const sam = await fetchSamOpportunity(noticeId);
+          if (sam && sam.text.trim().length >= 200) {
+            pageText = sam.text.slice(0, EXTRACT_MAX_CHARS);
+            console.log(`[extractTrackFromUrl] SAM.gov notice=${noticeId} attachments=${sam.attachmentsRead}/${sam.attachmentCount} chars=${pageText.length}`);
+          }
+        } catch (samErr) {
+          console.error('[extractTrackFromUrl] SAM.gov API failed:', samErr);
+          // Fall through to the generic fetch below.
+        }
+      }
     }
-    const ct = resp.headers.get('content-type') || '';
-    if (ct.includes('application/pdf')) {
-      const buf = Buffer.from(await resp.arrayBuffer());
-      const pdfParseModule = await import('pdf-parse');
-      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-      const out = await pdfParse(buf);
-      pageText = (out.text || '').slice(0, 60_000);
-    } else {
-      const html = await resp.text();
-      // Strip script/style/nav garbage and collapse whitespace. Good enough
-      // for Claude — it ignores noise just fine, but smaller payload = faster.
-      pageText = html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 60_000);
+
+    if (!pageText) {
+      const resp = await fetch(url, {
+        redirect: 'follow',
+        headers: {
+          // DSIP, grants.gov, and most public solicitation hosts allow
+          // vanilla browser-style requests. JS-only pages come back empty —
+          // we mark "blocked" and the UI offers paste / bookmarklet.
+          'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
+          'Accept': 'text/html,application/xhtml+xml,application/pdf,*/*',
+        },
+      });
+      if (!resp.ok) {
+        await prisma.workflowTrack.update({
+          where: { id: trackId },
+          data: { aiExtractionStatus: 'blocked', aiExtractedAt: new Date() },
+        });
+        return;
+      }
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('application/pdf')) {
+        const buf = Buffer.from(await resp.arrayBuffer());
+        const pdfParseModule = await import('pdf-parse');
+        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+        const out = await pdfParse(buf);
+        pageText = (out.text || '').slice(0, EXTRACT_MAX_CHARS);
+      } else {
+        const html = await resp.text();
+        pageText = html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, EXTRACT_MAX_CHARS);
+      }
     }
   } catch (err) {
     console.error('[extractTrackFromUrl] fetch failed:', err);
@@ -693,7 +718,9 @@ async function extractFieldsFromText(pageText: string): Promise<ExtractedOpportu
     focusAreas: [], pointsOfContact: [], additionalSections: [], status: 'failed',
   };
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Generous timeout — a full solicitation + attachments can be a large
+    // prompt. This runs in the background, so a long call is fine.
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 600_000 });
     const sys = `You extract opportunity details from a US-government contract solicitation, BAA, OTA, SBIR/STTR topic, or RFP.
 
 Rules:
@@ -726,11 +753,14 @@ Rules:
 }
 
 Source page text:
-${pageText.slice(0, 80_000)}`;
+${pageText.slice(0, EXTRACT_MAX_CHARS)}`;
 
+    // claude-opus-4-8's 1M-token context lets us hand it the entire document
+    // (description + all attachments) in one shot — no chunking needed. A large
+    // max_tokens leaves room for every focus area in a long solicitation.
     const message = await client.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 4000,
+      model: 'claude-opus-4-8',
+      max_tokens: 16000,
       system: sys,
       messages: [{ role: 'user', content: schemaPrompt }],
     });
