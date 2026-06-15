@@ -47,17 +47,21 @@ export async function getClientScope(req: AuthRequest): Promise<ClientScope | nu
 // Contact and Entity carry a `tags` field; Initiative/Interaction inherit the
 // tag via their related entities/contacts.
 
+// Tags are free-text and inconsistently cased (e.g. "ShadowGrid" vs
+// "Shadowgrid"), so all tag matching is case-insensitive.
+const tag = (clientName: string | null) => ({ contains: clientName, mode: 'insensitive' as const });
+
 export function contactScope(s: ClientScope): any[] {
   return [
     { entityId: s.clientId },
-    { tags: { contains: s.clientName } },
+    { tags: tag(s.clientName) },
   ];
 }
 
 export function entityScope(s: ClientScope): any[] {
   return [
     { id: s.clientId },
-    { tags: { contains: s.clientName } },
+    { tags: tag(s.clientName) },
   ];
 }
 
@@ -65,18 +69,18 @@ export function initiativeScope(s: ClientScope): any[] {
   return [
     { primaryEntityId: s.clientId },
     { entities: { some: { entityId: s.clientId } } },
-    { primaryEntity: { tags: { contains: s.clientName } } },
-    { entities: { some: { entity: { tags: { contains: s.clientName } } } } },
+    { primaryEntity: { tags: tag(s.clientName) } },
+    { entities: { some: { entity: { tags: tag(s.clientName) } } } },
   ];
 }
 
 export function interactionScope(s: ClientScope): any[] {
   return [
     { entityId: s.clientId },
-    { entity: { tags: { contains: s.clientName } } },
+    { entity: { tags: tag(s.clientName) } },
     { initiative: { primaryEntityId: s.clientId } },
-    { initiative: { primaryEntity: { tags: { contains: s.clientName } } } },
+    { initiative: { primaryEntity: { tags: tag(s.clientName) } } },
     { contacts: { some: { contact: { entityId: s.clientId } } } },
-    { contacts: { some: { contact: { tags: { contains: s.clientName } } } } },
+    { contacts: { some: { contact: { tags: tag(s.clientName) } } } },
   ];
 }
