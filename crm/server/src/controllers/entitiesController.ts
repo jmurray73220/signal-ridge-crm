@@ -2,11 +2,18 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-import { getClientScope } from '../services/clientScope';
+import {
+  getClientScope,
+  getClientVisibleEntityIds,
+  initiativeEntityScope,
+  interactionEntityScope,
+} from '../services/clientScope';
 
 /**
  * For a client login, returns true when the given entity id is NOT their own
- * client entity (i.e. access must be denied). Returns false for internal staff.
+ * client entity (strict, own-only). Used by the sub-list endpoints
+ * (contacts/initiatives/interactions of an entity), which would otherwise
+ * expose a referenced entity's full roster/activity. Returns false for staff.
  */
 async function clientBlocksEntity(req: AuthRequest, id: string): Promise<boolean> {
   const scope = await getClientScope(req);
@@ -35,7 +42,9 @@ export async function getEntities(req: AuthRequest, res: Response) {
     const scope = await getClientScope(req);
     if (scope) {
       if (!scope.clientId) return res.json([]);
-      where.id = scope.clientId; // clients only see their own entity
+      // Clients see their own entity plus the entities their initiatives /
+      // interactions reference.
+      where.id = { in: await getClientVisibleEntityIds(scope.clientId) };
     }
     const entities = await prisma.entity.findMany({
       where,
@@ -59,10 +68,62 @@ export async function getEntities(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Detail view of a referenced (non-own) entity for a client login. Returns the
+ * entity profile but limits every roll-up to the CLIENT's own activity with
+ * that entity — never another client's initiatives/interactions or the firm's
+ * full contact roster there.
+ */
+async function getReferencedEntityForClient(res: Response, id: string, clientId: string) {
+  const entity = await prisma.entity.findUnique({
+    where: { id },
+    include: {
+      createdBy: { select: { firstName: true, lastName: true } },
+      updatedBy: { select: { firstName: true, lastName: true } },
+    },
+  });
+  if (!entity) return res.status(404).json({ error: 'Entity not found' });
+
+  const initiatives = await prisma.initiative.findMany({
+    where: { AND: [{ OR: initiativeEntityScope(clientId) }, { OR: initiativeEntityScope(id) }] },
+    include: { _count: { select: { contacts: true } } },
+  });
+
+  const interactions = await prisma.interaction.findMany({
+    where: {
+      deletedAt: null,
+      AND: [{ OR: interactionEntityScope(clientId) }, { OR: interactionEntityScope(id) }],
+    },
+    include: {
+      contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
+      initiative: { select: { id: true, title: true } },
+      _count: { select: { attachments: true } },
+    },
+    orderBy: { date: 'desc' },
+  });
+
+  return res.json({
+    ...parseEntityArrayFields(entity),
+    contacts: [],
+    initiatives,
+    initiativeLinks: [],
+    tasks: [],
+    interactions,
+  });
+}
+
 export async function getEntity(req: AuthRequest, res: Response) {
   const { id } = req.params;
   try {
-    if (await clientBlocksEntity(req, id)) return res.status(404).json({ error: 'Entity not found' });
+    const scope = await getClientScope(req);
+    if (scope) {
+      if (!scope.clientId) return res.status(404).json({ error: 'Entity not found' });
+      const visible = await getClientVisibleEntityIds(scope.clientId);
+      if (!visible.includes(id)) return res.status(404).json({ error: 'Entity not found' });
+      // Referenced (non-own) entities get a profile with client-scoped roll-ups.
+      if (id !== scope.clientId) return getReferencedEntityForClient(res, id, scope.clientId);
+      // Own entity falls through to the full detail below.
+    }
     const entity = await prisma.entity.findUnique({
       where: { id },
       include: {

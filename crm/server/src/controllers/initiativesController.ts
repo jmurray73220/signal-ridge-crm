@@ -3,15 +3,7 @@ import prisma from '../services/prisma';
 import { rawPrisma } from '../services/prisma';
 import { softDelete, logUpdate } from '../services/audit';
 import { AuthRequest } from '../types';
-import { getClientScope } from '../services/clientScope';
-
-/** OR conditions limiting initiatives to those tied to a given entity. */
-function initiativeEntityScope(entityId: string) {
-  return [
-    { primaryEntityId: entityId },
-    { entities: { some: { entityId } } },
-  ];
-}
+import { getClientScope, initiativeEntityScope } from '../services/clientScope';
 
 export async function getInitiatives(req: AuthRequest, res: Response) {
   const { status, priority, entity } = req.query;

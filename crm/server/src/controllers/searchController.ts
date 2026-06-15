@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
-import { getClientScope } from '../services/clientScope';
+import { getClientScope, getClientVisibleEntityIds } from '../services/clientScope';
 
 
 export async function globalSearch(req: AuthRequest, res: Response) {
@@ -21,6 +21,9 @@ export async function globalSearch(req: AuthRequest, res: Response) {
   const cid = scope?.clientId;
   const withScope = (textOr: any[], scopeOr: any[]) =>
     cid ? { AND: [{ OR: textOr }, { OR: scopeOr }] } : { OR: textOr };
+  // Entities expand to the client's own entity plus the entities their
+  // initiatives/interactions reference.
+  const visibleEntityIds = cid ? await getClientVisibleEntityIds(cid) : null;
 
   try {
     const [contacts, entities, initiatives] = await Promise.all([
@@ -53,7 +56,7 @@ export async function globalSearch(req: AuthRequest, res: Response) {
             { address: { contains: query, mode: 'insensitive' } },
             { tags: { contains: query, mode: 'insensitive' } },
           ],
-          [{ id: cid! }],
+          [{ id: { in: visibleEntityIds ?? [] } }],
         ),
         take: 10,
       }),

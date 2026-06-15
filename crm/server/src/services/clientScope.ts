@@ -44,3 +44,54 @@ export async function getClientScope(req: AuthRequest): Promise<ClientScope | nu
   });
   return { clientId: wfClient?.clientId ?? null, clientName: wfClient?.name ?? null };
 }
+
+/** OR conditions limiting initiatives to those tied to a given entity. */
+export function initiativeEntityScope(entityId: string) {
+  return [
+    { primaryEntityId: entityId },
+    { entities: { some: { entityId } } },
+  ];
+}
+
+/** OR conditions limiting interactions to those tied to a given entity. */
+export function interactionEntityScope(entityId: string) {
+  return [
+    { entityId },
+    { initiative: { primaryEntityId: entityId } },
+    { contacts: { some: { contact: { entityId } } } },
+  ];
+}
+
+/**
+ * The set of CRM Entity ids a client may view: their own entity PLUS every
+ * entity referenced by their own initiatives and interactions (e.g. the
+ * congressional offices they're engaging). The client can open those entities'
+ * pages, but their roll-ups are still filtered to the client's own activity by
+ * the entity controller — so another client's activity at a shared office is
+ * never exposed.
+ */
+export async function getClientVisibleEntityIds(clientId: string): Promise<string[]> {
+  const ids = new Set<string>([clientId]);
+
+  const initiatives = await prisma.initiative.findMany({
+    where: { OR: initiativeEntityScope(clientId) },
+    select: { primaryEntityId: true, entities: { select: { entityId: true } } },
+  });
+  for (const i of initiatives) {
+    if (i.primaryEntityId) ids.add(i.primaryEntityId);
+    for (const e of i.entities) ids.add(e.entityId);
+  }
+
+  const interactions = await prisma.interaction.findMany({
+    where: { OR: interactionEntityScope(clientId) },
+    select: { entityId: true, contacts: { select: { contact: { select: { entityId: true } } } } },
+  });
+  for (const x of interactions) {
+    if (x.entityId) ids.add(x.entityId);
+    for (const c of x.contacts) {
+      if (c.contact?.entityId) ids.add(c.contact.entityId);
+    }
+  }
+
+  return [...ids];
+}

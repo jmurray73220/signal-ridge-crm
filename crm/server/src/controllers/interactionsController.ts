@@ -2,16 +2,7 @@ import { Response } from 'express';
 import prisma from '../services/prisma';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
-import { getClientScope } from '../services/clientScope';
-
-/** OR conditions limiting interactions to those tied to a given entity. */
-function interactionEntityScope(entityId: string) {
-  return [
-    { entityId },
-    { initiative: { primaryEntityId: entityId } },
-    { contacts: { some: { contact: { entityId } } } },
-  ];
-}
+import { getClientScope, interactionEntityScope } from '../services/clientScope';
 
 export async function getInteractions(req: AuthRequest, res: Response) {
   const { type, entityId, contactId, initiativeId, from, to } = req.query;
