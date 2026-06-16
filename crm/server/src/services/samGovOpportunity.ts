@@ -70,27 +70,38 @@ export async function fetchSamOpportunity(noticeId: string): Promise<SamOpportun
   const apiKey = process.env.SAM_GOV_API_KEY;
   if (!apiKey) throw new Error('SAM_GOV_API_KEY not configured');
 
-  // The v2 search requires a posted-date window (max one year). Look back a
-  // year from today, which covers any currently-open opportunity.
   const fmt = (d: Date) => {
     const [y, m, day] = d.toISOString().slice(0, 10).split('-');
     return `${m}/${day}/${y}`;
   };
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    noticeid: noticeId,
-    postedFrom: fmt(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)),
-    postedTo: fmt(new Date()),
-    limit: '1',
-  });
 
-  const res = await fetch(`${SAM_SEARCH}?${params}`);
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`SAM.gov ${res.status}${body ? ' — ' + body.slice(0, 200) : ''}`);
+  // The v2 search requires a posted-date window and rejects ranges of a year
+  // or more ("Date range must be ... year(s) apart"), and only returns the
+  // notice if its posted date falls inside the window. So walk backward in
+  // sub-year windows until we find it — covers several years of history while
+  // staying under the limit.
+  const DAY = 24 * 60 * 60 * 1000;
+  const WINDOW_DAYS = 360;
+  const MAX_WINDOWS = 8; // ~7.9 years back
+  let opp: any = null;
+  for (let i = 0; i < MAX_WINDOWS && !opp; i++) {
+    const to = new Date(Date.now() - i * WINDOW_DAYS * DAY);
+    const from = new Date(to.getTime() - WINDOW_DAYS * DAY);
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      noticeid: noticeId,
+      postedFrom: fmt(from),
+      postedTo: fmt(to),
+      limit: '1',
+    });
+    const res = await fetch(`${SAM_SEARCH}?${params}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`SAM.gov ${res.status}${body ? ' — ' + body.slice(0, 200) : ''}`);
+    }
+    const data = (await res.json()) as { opportunitiesData?: any[] };
+    opp = data.opportunitiesData?.[0] || null;
   }
-  const data = (await res.json()) as { opportunitiesData?: any[] };
-  const opp = data.opportunitiesData?.[0];
   if (!opp) return null;
 
   const parts: string[] = [];
