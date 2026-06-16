@@ -1,17 +1,14 @@
 import { Response } from 'express';
-import * as pdfParseModule from 'pdf-parse';
 import mammoth from 'mammoth';
 import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
 import { getClientScope } from '../services/clientScope';
-
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { pdfBufferToText } from '../services/pdfText';
 
 async function extractText(buffer: Buffer, mimeType: string, filename: string): Promise<string> {
   const lower = (filename || '').toLowerCase();
   if (mimeType.includes('pdf') || lower.endsWith('.pdf')) {
-    const out = await pdfParse(buffer);
-    return (out.text || '').trim();
+    return pdfBufferToText(buffer);
   }
   if (
     mimeType.includes('officedocument.wordprocessingml.document') ||

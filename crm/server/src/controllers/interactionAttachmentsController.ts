@@ -1,10 +1,8 @@
 import { Response } from 'express';
-import * as pdfParseModule from 'pdf-parse';
 import mammoth from 'mammoth';
 import prisma from '../services/prisma';
 import { AuthRequest } from '../types';
-
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { pdfBufferToText } from '../services/pdfText';
 
 // Best-effort text extraction. We persist whatever we get (or empty string for
 // formats we don't understand) — the original file is always preserved as
@@ -13,8 +11,7 @@ async function extractText(buffer: Buffer, mimeType: string, filename: string): 
   const lower = (filename || '').toLowerCase();
   try {
     if (mimeType.includes('pdf') || lower.endsWith('.pdf')) {
-      const out = await pdfParse(buffer);
-      return (out.text || '').trim();
+      return pdfBufferToText(buffer);
     }
     if (
       mimeType.includes('officedocument.wordprocessingml.document') ||

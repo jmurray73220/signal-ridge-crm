@@ -3,6 +3,7 @@ import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
 import mammoth from 'mammoth';
 import { softDelete } from '../services/audit';
+import { pdfBufferToText } from '../services/pdfText';
 import { AuthRequest } from '../types';
 import { assertClientAccess } from '../middleware/workflowAuth';
 import { isSamGovUrl, extractSamNoticeId, fetchSamOpportunity } from '../services/samGovOpportunity';
@@ -655,10 +656,7 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
       const ct = resp.headers.get('content-type') || '';
       if (ct.includes('application/pdf')) {
         const buf = Buffer.from(await resp.arrayBuffer());
-        const pdfParseModule = await import('pdf-parse');
-        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-        const out = await pdfParse(buf);
-        pageText = (out.text || '').slice(0, EXTRACT_MAX_CHARS);
+        pageText = (await pdfBufferToText(buf)).slice(0, EXTRACT_MAX_CHARS);
       } else {
         const html = await resp.text();
         pageText = html
@@ -889,10 +887,7 @@ export async function extractPreview(req: AuthRequest, res: Response) {
       const ct = resp.headers.get('content-type') || '';
       if (ct.includes('application/pdf')) {
         const buf = Buffer.from(await resp.arrayBuffer());
-        const pdfParseModule = await import('pdf-parse');
-        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-        const out = await pdfParse(buf);
-        pageText = (out.text || '').slice(0, 80_000);
+        pageText = (await pdfBufferToText(buf)).slice(0, 80_000);
       } else {
         const html = await resp.text();
         pageText = html
@@ -1028,10 +1023,7 @@ export async function extractTrackFromFile(req: AuthRequest, res: Response) {
     const lower = filename.toLowerCase();
     let text = '';
     if (mime.includes('pdf') || lower.endsWith('.pdf')) {
-      const mod = await import('pdf-parse');
-      const pdfParse = (mod as any).default || mod;
-      const out = await pdfParse(req.file.buffer);
-      text = (out.text || '').trim();
+      text = await pdfBufferToText(req.file.buffer);
     } else if (mime.includes('wordprocessingml') || lower.endsWith('.docx')) {
       const out = await mammoth.extractRawText({ buffer: req.file.buffer });
       text = (out.value || '').trim();

@@ -1,9 +1,8 @@
 import { Response } from 'express';
 import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
-import * as pdfParseModule from 'pdf-parse';
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { AuthRequest } from '../types';
+import { pdfBufferToText } from '../services/pdfText';
 import { searchAwards } from '../services/usaSpendingService';
 import { searchOpportunities } from '../services/samGovService';
 import { getClientScope } from '../services/clientScope';
@@ -17,8 +16,7 @@ export async function uploadDocument(req: AuthRequest, res: Response) {
     }
 
     const name = req.body.name || req.file.originalname.replace(/\.pdf$/i, '');
-    const pdfData = await pdfParse(req.file.buffer);
-    const extractedText = pdfData.text;
+    const extractedText = await pdfBufferToText(req.file.buffer);
 
     if (!extractedText || extractedText.trim().length < 50) {
       return res.status(400).json({ error: 'Could not extract meaningful text from PDF' });

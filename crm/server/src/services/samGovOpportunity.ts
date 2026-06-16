@@ -11,6 +11,7 @@
 //      fallback. NB: it's keyed by a DIFFERENT "Notice ID" than the page URL,
 //      so it often can't find an opportunity by the URL id.
 import mammoth from 'mammoth';
+import { pdfBufferToText } from './pdfText';
 
 const SAM_SITE = 'https://sam.gov/api/prod/opps';
 const SAM_SEARCH = 'https://api.sam.gov/opportunities/v2/search';
@@ -44,10 +45,7 @@ function stripHtml(html: string): string {
 }
 
 async function pdfToText(buf: Buffer): Promise<string> {
-  const mod = await import('pdf-parse');
-  const pdfParse = (mod as any).default || mod;
-  const out = await pdfParse(buf);
-  return (out.text || '').trim();
+  return pdfBufferToText(buf);
 }
 
 async function docxToText(buf: Buffer): Promise<string> {
