@@ -99,10 +99,38 @@ export async function fetchSamOpportunity(noticeId: string): Promise<SamOpportun
       const body = await res.text().catch(() => '');
       throw new Error(`SAM.gov ${res.status}${body ? ' — ' + body.slice(0, 200) : ''}`);
     }
-    const data = (await res.json()) as { opportunitiesData?: any[] };
+    const data = (await res.json()) as { totalRecords?: number; opportunitiesData?: any[] };
+    console.log(`[samGov] search window ${i} ${fmt(from)}-${fmt(to)} status=${res.status} total=${data.totalRecords ?? '?'} returned=${data.opportunitiesData?.length ?? 0}`);
     opp = data.opportunitiesData?.[0] || null;
   }
-  if (!opp) return null;
+
+  if (!opp) {
+    // The search only returns a notice when its postedDate sits inside the
+    // window. The notice-description endpoint has no date filter — fall back to
+    // it so we at least get the opportunity's text even if the search misses.
+    console.log(`[samGov] search found nothing for ${noticeId}; trying noticedesc fallback`);
+    try {
+      const dres = await fetch(`https://api.sam.gov/opportunities/v1/noticedesc?noticeid=${encodeURIComponent(noticeId)}&api_key=${apiKey}`);
+      console.log(`[samGov] noticedesc status=${dres.status}`);
+      if (dres.ok) {
+        const dj = (await dres.json().catch(() => null)) as any;
+        const desc = stripHtml(dj?.description || '');
+        if (desc && desc.length >= 200) {
+          console.log(`[samGov] noticedesc fallback got ${desc.length} chars`);
+          return { text: `Description:\n${desc}`, attachmentCount: 0, attachmentsRead: 0 };
+        }
+        console.log(`[samGov] noticedesc returned no usable text (keys=${dj ? Object.keys(dj).join(',') : 'none'})`);
+      } else {
+        const body = await dres.text().catch(() => '');
+        console.log(`[samGov] noticedesc body: ${body.slice(0, 200)}`);
+      }
+    } catch (e) {
+      console.log(`[samGov] noticedesc fallback failed: ${(e as Error).message}`);
+    }
+    return null;
+  }
+
+  console.log(`[samGov] found notice; record keys=${Object.keys(opp).join(',')}`);
 
   const parts: string[] = [];
 
