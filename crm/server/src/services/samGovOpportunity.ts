@@ -182,9 +182,12 @@ async function fetchViaSearch(noticeId: string): Promise<SamOpportunityResult | 
     const [y, m, day] = dt.toISOString().slice(0, 10).split('-');
     return `${m}/${day}/${y}`;
   };
+  // Keep this small: api.sam.gov personal keys have a tiny daily quota, and the
+  // site API (no key) is the primary path — this fallback only runs when the
+  // site API returns nothing, so cap the spend at a few recent windows.
   const DAY = 24 * 60 * 60 * 1000;
   const WINDOW_DAYS = 360;
-  const MAX_WINDOWS = 8;
+  const MAX_WINDOWS = 3;
   let opp: any = null;
   for (let i = 0; i < MAX_WINDOWS && !opp; i++) {
     const to = new Date(Date.now() - i * WINDOW_DAYS * DAY);
