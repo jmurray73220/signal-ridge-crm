@@ -1,31 +1,33 @@
-// Fetches a single SAM.gov opportunity's full text via the official API and
-// returns it as one big string for Claude extraction.
+// Fetches a single SAM.gov opportunity's full text and returns it as one big
+// string for Claude extraction.
 //
-// SAM.gov opportunity pages (https://sam.gov/opp/<noticeId>/view) are a
-// JavaScript SPA — a plain fetch of the page returns an empty shell. The real
-// content lives behind api.sam.gov: the opportunity record (metadata), a
-// separate "notice description" endpoint, and a list of downloadable
-// attachments (the actual RFP/solicitation PDFs). This pulls all three and
-// concatenates them. Requires SAM_GOV_API_KEY (free from sam.gov account
-// → Account Details → API Key).
+// SAM.gov opportunity pages (https://sam.gov/opp/<id>/view) are a JavaScript
+// SPA — a plain fetch of the page returns an empty shell. The real content is
+// behind two surfaces:
+//   1. sam.gov's own site API (https://sam.gov/api/prod/opps/...), keyed by the
+//      same id that's in the page URL, no key required. This is the PRIMARY
+//      path — it has the description inline plus the attachment list.
+//   2. the documented api.sam.gov search (needs SAM_GOV_API_KEY) — kept as a
+//      fallback. NB: it's keyed by a DIFFERENT "Notice ID" than the page URL,
+//      so it often can't find an opportunity by the URL id.
 import mammoth from 'mammoth';
 
+const SAM_SITE = 'https://sam.gov/api/prod/opps';
 const SAM_SEARCH = 'https://api.sam.gov/opportunities/v2/search';
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; SignalRidgeCRM/1.0)',
+  'Accept': 'application/json, text/plain, */*',
+};
 
 export function isSamGovUrl(url: string): boolean {
   return /(^|\/\/|\.)sam\.gov\//i.test(url) && /\/opp\//i.test(url);
 }
 
-/** Pull the notice id out of a sam.gov opportunity URL (the long hex segment
- *  after /opp/). Returns null if it doesn't look like an opportunity link. */
+/** Pull the opportunity id out of a sam.gov URL (the long hex segment after
+ *  /opp/). Returns null if it doesn't look like an opportunity link. */
 export function extractSamNoticeId(url: string): string | null {
   const m = url.match(/\/opp\/([a-z0-9]{8,})/i);
   return m ? m[1] : null;
-}
-
-function withApiKey(url: string, apiKey: string): string {
-  if (url.includes('api_key=')) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}api_key=${apiKey}`;
 }
 
 function stripHtml(html: string): string {
@@ -53,6 +55,13 @@ async function docxToText(buf: Buffer): Promise<string> {
   return (out.value || '').trim();
 }
 
+async function fileToText(buf: Buffer, ct: string, name: string): Promise<string> {
+  if (ct.includes('pdf') || /\.pdf$/i.test(name)) return pdfToText(buf);
+  if (ct.includes('wordprocessingml') || /\.docx$/i.test(name)) return docxToText(buf);
+  if (ct.startsWith('text/') || /\.(txt|md|csv)$/i.test(name)) return buf.toString('utf8').trim();
+  return '';
+}
+
 export interface SamOpportunityResult {
   text: string;
   title?: string;
@@ -60,29 +69,122 @@ export interface SamOpportunityResult {
   attachmentsRead: number;
 }
 
-/**
- * Fetch a SAM.gov opportunity by notice id and return its combined text
- * (metadata + full description + every readable attachment). Returns null if
- * the notice can't be found. Throws if the API key is missing or the API
- * errors hard — the caller decides how to surface that.
- */
-export async function fetchSamOpportunity(noticeId: string): Promise<SamOpportunityResult | null> {
-  const apiKey = process.env.SAM_GOV_API_KEY;
-  if (!apiKey) throw new Error('SAM_GOV_API_KEY not configured');
+// ── Primary: sam.gov site API (keyed by the page-URL id, no key) ────────────
 
-  const fmt = (d: Date) => {
-    const [y, m, day] = d.toISOString().slice(0, 10).split('-');
+async function fetchAttachmentsViaSite(id: string): Promise<{ texts: string[]; count: number }> {
+  const texts: string[] = [];
+  let count = 0;
+  try {
+    const url = `${SAM_SITE}/v3/opportunities/resources?opportunityId=${encodeURIComponent(id)}&excludeDeleted=true&withScanResult=false`;
+    const res = await fetch(url, { headers: BROWSER_HEADERS });
+    console.log(`[samGov] site resources status=${res.status}`);
+    if (!res.ok) return { texts, count };
+    const json = (await res.json().catch(() => null)) as any;
+
+    // Walk the JSON for attachment descriptors (resourceId/id + name). Shape
+    // varies; collect from the known nesting and log what we found.
+    const found: Array<{ rid: string; name: string }> = [];
+    const lists = json?._embedded?.opportunityAttachmentList || [];
+    for (const l of lists) {
+      for (const a of l?.attachments || []) {
+        const rid = a?.resourceId || a?.id;
+        if (rid) found.push({ rid: String(rid), name: String(a?.name || '') });
+      }
+    }
+    console.log(`[samGov] site resources found ${found.length} attachment(s)`);
+    count = found.length;
+
+    for (const { rid, name } of found) {
+      try {
+        const dl = `${SAM_SITE}/v3/opportunities/resources/files/${rid}/download`;
+        const fres = await fetch(dl, { headers: BROWSER_HEADERS, redirect: 'follow' });
+        if (!fres.ok) {
+          console.log(`[samGov] attachment ${name || rid} download status=${fres.status}`);
+          continue;
+        }
+        const buf = Buffer.from(await fres.arrayBuffer());
+        const txt = await fileToText(buf, fres.headers.get('content-type') || '', name);
+        if (txt) texts.push(`Attachment (${name || rid}):\n${txt}`);
+      } catch {
+        /* tolerate per-attachment failures */
+      }
+    }
+  } catch (e) {
+    console.log(`[samGov] site resources failed: ${(e as Error).message}`);
+  }
+  return { texts, count };
+}
+
+async function fetchViaSite(id: string): Promise<SamOpportunityResult | null> {
+  const res = await fetch(`${SAM_SITE}/v2/opportunities/${encodeURIComponent(id)}`, { headers: BROWSER_HEADERS });
+  console.log(`[samGov] site opportunity status=${res.status}`);
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as any;
+  const d = json?.data2;
+  if (!d) {
+    console.log(`[samGov] site opportunity: no data2 (keys=${json ? Object.keys(json).join(',') : 'none'})`);
+    return null;
+  }
+
+  const parts: string[] = [];
+  const meta: string[] = [];
+  const sol = d.solicitation || {};
+  if (d.title) meta.push(`Title: ${d.title}`);
+  if (sol.solicitationNumber || d.solicitationNumber) meta.push(`Solicitation Number: ${sol.solicitationNumber || d.solicitationNumber}`);
+  if (d.type) meta.push(`Notice Type: ${d.type}`);
+  if (sol.deadlines?.response) meta.push(`Response Deadline: ${sol.deadlines.response}`);
+  if (d.postedDate) meta.push(`Posted: ${d.postedDate}`);
+  if (Array.isArray(d.naics)) {
+    const codes = d.naics.flatMap((n: any) => n?.code || []);
+    if (codes.length) meta.push(`NAICS: ${codes.join(', ')}`);
+  }
+  if (d.classificationCode) meta.push(`Classification Code: ${d.classificationCode}`);
+  if (d.placeOfPerformance) {
+    const p = d.placeOfPerformance;
+    const loc = [p.city?.name, p.state?.code, p.zip, p.country?.code].filter(Boolean).join(', ');
+    if (loc) meta.push(`Place of Performance: ${loc}`);
+  }
+  if (Array.isArray(d.pointOfContact)) {
+    for (const poc of d.pointOfContact) {
+      const line = [poc.fullName, poc.title, poc.email, poc.phone].filter(Boolean).join(' — ');
+      if (line) meta.push(`Point of Contact: ${line}`);
+    }
+  }
+  if (meta.length) parts.push(meta.join('\n'));
+
+  // Description body is inline HTML on the site API.
+  if (Array.isArray(d.description)) {
+    const body = d.description.map((x: any) => stripHtml(x?.body || '')).filter(Boolean).join('\n\n');
+    if (body) parts.push(`Description:\n${body}`);
+  } else if (typeof d.description === 'string') {
+    const body = stripHtml(d.description);
+    if (body) parts.push(`Description:\n${body}`);
+  }
+
+  const { texts, count } = await fetchAttachmentsViaSite(id);
+  parts.push(...texts);
+
+  const text = parts.join('\n\n');
+  if (text.trim().length < 200) {
+    console.log(`[samGov] site opportunity produced only ${text.length} chars`);
+    return null;
+  }
+  return { text, title: d.title ? String(d.title) : undefined, attachmentCount: count, attachmentsRead: texts.length };
+}
+
+// ── Fallback: documented api.sam.gov search (needs the API key) ─────────────
+
+async function fetchViaSearch(noticeId: string): Promise<SamOpportunityResult | null> {
+  const apiKey = process.env.SAM_GOV_API_KEY;
+  if (!apiKey) return null;
+
+  const fmt = (dt: Date) => {
+    const [y, m, day] = dt.toISOString().slice(0, 10).split('-');
     return `${m}/${day}/${y}`;
   };
-
-  // The v2 search requires a posted-date window and rejects ranges of a year
-  // or more ("Date range must be ... year(s) apart"), and only returns the
-  // notice if its posted date falls inside the window. So walk backward in
-  // sub-year windows until we find it — covers several years of history while
-  // staying under the limit.
   const DAY = 24 * 60 * 60 * 1000;
   const WINDOW_DAYS = 360;
-  const MAX_WINDOWS = 8; // ~7.9 years back
+  const MAX_WINDOWS = 8;
   let opp: any = null;
   for (let i = 0; i < MAX_WINDOWS && !opp; i++) {
     const to = new Date(Date.now() - i * WINDOW_DAYS * DAY);
@@ -100,41 +202,11 @@ export async function fetchSamOpportunity(noticeId: string): Promise<SamOpportun
       throw new Error(`SAM.gov ${res.status}${body ? ' — ' + body.slice(0, 200) : ''}`);
     }
     const data = (await res.json()) as { totalRecords?: number; opportunitiesData?: any[] };
-    console.log(`[samGov] search window ${i} ${fmt(from)}-${fmt(to)} status=${res.status} total=${data.totalRecords ?? '?'} returned=${data.opportunitiesData?.length ?? 0}`);
     opp = data.opportunitiesData?.[0] || null;
   }
-
-  if (!opp) {
-    // The search only returns a notice when its postedDate sits inside the
-    // window. The notice-description endpoint has no date filter — fall back to
-    // it so we at least get the opportunity's text even if the search misses.
-    console.log(`[samGov] search found nothing for ${noticeId}; trying noticedesc fallback`);
-    try {
-      const dres = await fetch(`https://api.sam.gov/opportunities/v1/noticedesc?noticeid=${encodeURIComponent(noticeId)}&api_key=${apiKey}`);
-      console.log(`[samGov] noticedesc status=${dres.status}`);
-      if (dres.ok) {
-        const dj = (await dres.json().catch(() => null)) as any;
-        const desc = stripHtml(dj?.description || '');
-        if (desc && desc.length >= 200) {
-          console.log(`[samGov] noticedesc fallback got ${desc.length} chars`);
-          return { text: `Description:\n${desc}`, attachmentCount: 0, attachmentsRead: 0 };
-        }
-        console.log(`[samGov] noticedesc returned no usable text (keys=${dj ? Object.keys(dj).join(',') : 'none'})`);
-      } else {
-        const body = await dres.text().catch(() => '');
-        console.log(`[samGov] noticedesc body: ${body.slice(0, 200)}`);
-      }
-    } catch (e) {
-      console.log(`[samGov] noticedesc fallback failed: ${(e as Error).message}`);
-    }
-    return null;
-  }
-
-  console.log(`[samGov] found notice; record keys=${Object.keys(opp).join(',')}`);
+  if (!opp) return null;
 
   const parts: string[] = [];
-
-  // Metadata block.
   const meta: string[] = [];
   if (opp.title) meta.push(`Title: ${opp.title}`);
   if (opp.solicitationNumber) meta.push(`Solicitation Number: ${opp.solicitationNumber}`);
@@ -151,54 +223,62 @@ export async function fetchSamOpportunity(noticeId: string): Promise<SamOpportun
   }
   if (meta.length) parts.push(meta.join('\n'));
 
-  // Full description — `opp.description` is a URL to the notice-description API.
   if (opp.description) {
     try {
-      const dres = await fetch(withApiKey(String(opp.description), apiKey));
+      const descUrl = String(opp.description).includes('api_key=')
+        ? String(opp.description)
+        : `${opp.description}${String(opp.description).includes('?') ? '&' : '?'}api_key=${apiKey}`;
+      const dres = await fetch(descUrl);
       if (dres.ok) {
         const ct = dres.headers.get('content-type') || '';
-        let raw = '';
-        if (ct.includes('application/json')) {
-          const dj = (await dres.json()) as any;
-          raw = dj?.description || dj?.body || '';
-        } else {
-          raw = await dres.text();
-        }
+        const raw = ct.includes('application/json') ? ((await dres.json()) as any)?.description || '' : await dres.text();
         const desc = stripHtml(raw);
         if (desc) parts.push(`Description:\n${desc}`);
       }
     } catch {
-      /* tolerate — metadata + attachments may still be enough */
+      /* tolerate */
     }
   }
 
-  // Attachments — resourceLinks are direct download URLs.
   const links: string[] = Array.isArray(opp.resourceLinks) ? opp.resourceLinks : [];
   let read = 0;
   for (const link of links) {
     try {
-      const fres = await fetch(withApiKey(String(link), apiKey), { redirect: 'follow' });
+      const dlUrl = String(link).includes('api_key=') ? String(link) : `${link}${String(link).includes('?') ? '&' : '?'}api_key=${apiKey}`;
+      const fres = await fetch(dlUrl, { redirect: 'follow' });
       if (!fres.ok) continue;
-      const ct = fres.headers.get('content-type') || '';
-      const cd = fres.headers.get('content-disposition') || '';
       const buf = Buffer.from(await fres.arrayBuffer());
-      let txt = '';
-      if (ct.includes('pdf') || /\.pdf/i.test(cd)) txt = await pdfToText(buf);
-      else if (ct.includes('wordprocessingml') || /\.docx/i.test(cd)) txt = await docxToText(buf);
-      else if (ct.startsWith('text/') || /\.(txt|md|csv)/i.test(cd)) txt = buf.toString('utf8').trim();
+      const txt = await fileToText(buf, fres.headers.get('content-type') || '', fres.headers.get('content-disposition') || '');
       if (txt) {
         parts.push(`Attachment:\n${txt}`);
         read++;
       }
     } catch {
-      /* tolerate per-attachment failures */
+      /* tolerate */
     }
   }
 
-  return {
-    text: parts.join('\n\n'),
-    title: opp.title ? String(opp.title) : undefined,
-    attachmentCount: links.length,
-    attachmentsRead: read,
-  };
+  return { text: parts.join('\n\n'), title: opp.title ? String(opp.title) : undefined, attachmentCount: links.length, attachmentsRead: read };
+}
+
+/**
+ * Fetch a SAM.gov opportunity by its page-URL id. Tries sam.gov's own site API
+ * first (keyed by that id, no key needed), then the documented api.sam.gov
+ * search as a fallback. Returns null if neither yields usable text.
+ */
+export async function fetchSamOpportunity(id: string): Promise<SamOpportunityResult | null> {
+  try {
+    const viaSite = await fetchViaSite(id);
+    if (viaSite) {
+      console.log(`[samGov] site path: ${viaSite.text.length} chars, attachments=${viaSite.attachmentsRead}/${viaSite.attachmentCount}`);
+      return viaSite;
+    }
+  } catch (e) {
+    console.log(`[samGov] site path failed: ${(e as Error).message}`);
+  }
+
+  console.log('[samGov] site path empty; trying api.sam.gov search fallback');
+  const viaSearch = await fetchViaSearch(id);
+  if (viaSearch) console.log(`[samGov] search path: ${viaSearch.text.length} chars, attachments=${viaSearch.attachmentsRead}/${viaSearch.attachmentCount}`);
+  return viaSearch;
 }

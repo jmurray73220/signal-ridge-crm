@@ -614,9 +614,10 @@ export async function extractTrackFromUrl(trackId: string, url: string): Promise
 
   let pageText = '';
   try {
-    // SAM.gov is a JS SPA — a plain fetch returns an empty shell. Use the
-    // official API to pull the description + attachment PDFs instead.
-    if (isSamGovUrl(url) && process.env.SAM_GOV_API_KEY) {
+    // SAM.gov is a JS SPA — a plain fetch returns an empty shell. Use SAM's
+    // APIs to pull the description + attachment PDFs instead. (The primary
+    // site-API path needs no key; the search fallback uses SAM_GOV_API_KEY.)
+    if (isSamGovUrl(url)) {
       const noticeId = extractSamNoticeId(url);
       if (noticeId) {
         try {
