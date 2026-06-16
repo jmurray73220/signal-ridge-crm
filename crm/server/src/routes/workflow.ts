@@ -21,7 +21,7 @@ import {
 } from '../controllers/phaseAssetsController';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 router.use(requireAuth);
 router.use(requireWorkflow);
@@ -50,6 +50,7 @@ router.post('/tracks/probe-url', requireWorkflowEditor, ctl.probeOpportunityUrl)
 router.post('/tracks/extract-preview', requireWorkflowEditor, ctl.extractPreview);
 router.post('/tracks/:id/extract-from-url', requireWorkflowEditor, ctl.retryExtractTrackFromUrl);
 router.post('/tracks/:id/extract-from-text', requireWorkflowEditor, ctl.extractTrackFromText);
+router.post('/tracks/:id/extract-from-file', requireWorkflowEditor, upload.single('file'), ctl.extractTrackFromFile);
 router.put('/tracks/:id', requireWorkflowEditor, ctl.updateTrack);
 router.delete('/tracks/:id', requireWorkflowEditor, ctl.deleteTrack);
 // Singular alias per spec

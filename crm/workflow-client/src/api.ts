@@ -94,6 +94,15 @@ export async function extractTrackFromText(trackId: string, text: string) {
   return data;
 }
 
+export async function extractTrackFromFile(trackId: string, file: File) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const { data } = await api.post(`/api/workflow/tracks/${trackId}/extract-from-file`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
 export async function probeOpportunityUrl(url: string): Promise<{ ok: boolean; reason?: string; status?: number }> {
   const { data } = await api.post('/api/workflow/tracks/probe-url', { url });
   return data;

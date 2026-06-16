@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import prisma from '../services/prisma';
 import Anthropic from '@anthropic-ai/sdk';
+import mammoth from 'mammoth';
 import { softDelete } from '../services/audit';
 import { AuthRequest } from '../types';
 import { assertClientAccess } from '../middleware/workflowAuth';
@@ -1007,6 +1008,50 @@ export async function extractTrackFromText(req: AuthRequest, res: Response) {
     return res.json({ status: 'pending' });
   } catch (err) {
     console.error('[extractTrackFromText]', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// Upload a PDF/DOCX/text file (e.g. the BAA/RFP attachment) and extract from
+// its full text. Better than copy-paste: programmatic extraction reads the
+// whole document in proper order with no manual select-all.
+export async function extractTrackFromFile(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  try {
+    if (!req.file) return res.status(400).json({ error: 'File required' });
+    const track = await prisma.workflowTrack.findUnique({ where: { id } });
+    if (!track) return res.status(404).json({ error: 'Not found' });
+    if (!assertClientAccess(req, track.workflowClientId)) return res.status(403).json({ error: 'Forbidden' });
+
+    const filename = req.file.originalname || 'upload';
+    const mime = req.file.mimetype || '';
+    const lower = filename.toLowerCase();
+    let text = '';
+    if (mime.includes('pdf') || lower.endsWith('.pdf')) {
+      const mod = await import('pdf-parse');
+      const pdfParse = (mod as any).default || mod;
+      const out = await pdfParse(req.file.buffer);
+      text = (out.text || '').trim();
+    } else if (mime.includes('wordprocessingml') || lower.endsWith('.docx')) {
+      const out = await mammoth.extractRawText({ buffer: req.file.buffer });
+      text = (out.value || '').trim();
+    } else if (mime.startsWith('text/') || /\.(txt|md|csv)$/.test(lower)) {
+      text = req.file.buffer.toString('utf8').trim();
+    } else {
+      return res.status(400).json({ error: 'Unsupported file type. Upload a PDF, DOCX, TXT, or MD.' });
+    }
+
+    if (text.length < 100) {
+      return res.status(400).json({ error: 'Could not extract readable text — the file may be a scanned/image-only PDF.' });
+    }
+
+    await prisma.workflowTrack.update({ where: { id }, data: { aiExtractionStatus: 'pending' } });
+    runOpportunityExtraction(id, text.slice(0, EXTRACT_MAX_CHARS)).catch(err => {
+      console.error('[extractTrackFromFile] background failed:', err);
+    });
+    return res.json({ status: 'pending', filename, chars: text.length });
+  } catch (err) {
+    console.error('[extractTrackFromFile]', err);
     return res.status(500).json({ error: 'Server error' });
   }
 }

@@ -20,6 +20,7 @@ import {
   deleteActionItem,
   retryExtractTrack,
   extractTrackFromText,
+  extractTrackFromFile,
   listAssignees,
   getTrackCrmFollowups,
   type Assignee,
@@ -1508,6 +1509,7 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
   const [showPaste, setShowPaste] = useState(false);
   const [pastedText, setPastedText] = useState('');
   const [pasting, setPasting] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Poll while extraction is running so fields fill in without a manual reload.
   useEffect(() => {
@@ -1547,6 +1549,22 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       toast.error(err?.response?.data?.error || 'Failed');
     } finally {
       setPasting(false);
+    }
+  }
+
+  async function submitFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setUploading(true);
+    try {
+      await extractTrackFromFile(track.id, file);
+      toast.success('Reading the document — fields will update shortly');
+      qc.invalidateQueries({ queryKey: ['track', track.id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -1778,13 +1796,25 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
       {showFallback && (
         <div className="mt-4 pt-3" style={{ borderTop: '1px solid #24375a' }}>
           {!showPaste ? (
-            <button
-              type="button"
-              className="btn-secondary text-xs"
-              onClick={() => setShowPaste(true)}
-            >
-              Paste opportunity / attachment text
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className={`btn-secondary text-xs cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                {uploading ? 'Uploading…' : 'Upload PDF / DOCX'}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,application/pdf"
+                  className="hidden"
+                  onChange={submitFile}
+                  disabled={uploading}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => setShowPaste(true)}
+              >
+                Paste text instead
+              </button>
+            </div>
           ) : (
             <div className="space-y-2">
               <label className="label">Opportunity or attachment text</label>
