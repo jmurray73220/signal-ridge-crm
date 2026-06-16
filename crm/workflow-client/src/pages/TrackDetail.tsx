@@ -1579,7 +1579,10 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
     }
   }
 
-  const showFallback = isAdmin && (status === 'blocked' || status === 'failed' || status === 'partial');
+  // Always available to admins: lets you re-extract from pasted text at any
+  // time — e.g. paste a downloaded attachment/PDF's text to pull its detail in,
+  // not just when the URL fetch failed.
+  const showFallback = isAdmin;
   const focusAreas = track.focusAreas || [];
   const targeted = track.targetedFocusAreas || [];
   const isConfirmed = !!track.focusAreasConfirmedAt;
@@ -1780,17 +1783,20 @@ function OpportunityCard({ track, isAdmin }: { track: WorkflowTrack; isAdmin: bo
               className="btn-secondary text-xs"
               onClick={() => setShowPaste(true)}
             >
-              Paste page text for re-extraction
+              Paste opportunity / attachment text
             </button>
           ) : (
             <div className="space-y-2">
-              <label className="label">Page text</label>
+              <label className="label">Opportunity or attachment text</label>
+              <p className="text-xs text-text-muted">
+                Paste the full text of the opportunity page or a downloaded attachment (open the PDF, Ctrl+A → Ctrl+C). Claude re-reads it and refreshes the fields below from what you paste, so include everything you want captured.
+              </p>
               <textarea
                 className="input"
                 rows={6}
                 value={pastedText}
                 onChange={e => setPastedText(e.target.value)}
-                placeholder="Open the opportunity in a tab where you're signed in, Ctrl+A → Ctrl+C → paste here"
+                placeholder="Paste the opportunity page text or a downloaded BAA/RFP PDF's text here…"
                 style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: '12px' }}
                 disabled={pasting}
               />
