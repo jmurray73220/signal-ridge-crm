@@ -2297,20 +2297,18 @@ export async function listAssignees(req: AuthRequest, res: Response) {
     // "Signal Ridge team" = active humans on the Signal Ridge side. Exclude:
     //  - Users scoped to a workflow client (those are the client's own people)
     //  - Bot/machine users (anything with an ApiKey row, e.g. Bubba)
-    // Only WorkflowAdmin sees the Signal Ridge team list — client editors
-    // should only be assigning their own contacts.
-    const isWorkflowAdmin = req.user?.workflowRole === 'WorkflowAdmin';
-    const users = isWorkflowAdmin
-      ? await prisma.user.findMany({
-          where: {
-            isActive: true,
-            workflowClientId: null,
-            apiKeys: { none: {} },
-          },
-          select: { id: true, firstName: true, lastName: true, email: true, role: true },
-          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-        })
-      : [];
+    // Both admins and client editors see this list so clients can assign work
+    // back to the Signal Ridge team (assertClientAccess above already gates
+    // which client a requester can reach).
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        workflowClientId: null,
+        apiKeys: { none: {} },
+      },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
 
     const assignees = [
       ...contacts.map((c) => ({
