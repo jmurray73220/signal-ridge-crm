@@ -7,6 +7,7 @@ import { ClientProvider } from './ClientContext';
 import { Layout } from './Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Documents } from './pages/Documents';
 import { TrackDetail } from './pages/TrackDetail';
 import { ActionItemDetail } from './pages/ActionItemDetail';
 import { SOWDetail } from './pages/SOWDetail';
@@ -55,6 +56,7 @@ export default function App() {
               }
             >
               <Route index element={<Dashboard />} />
+              <Route path="documents" element={<Documents />} />
               <Route path="tracks/:id" element={<TrackDetail />} />
               <Route path="action-items/:id" element={<ActionItemDetail />} />
               <Route path="sows/:id" element={<SOWDetail />} />

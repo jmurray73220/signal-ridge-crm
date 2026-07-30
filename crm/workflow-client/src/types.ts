@@ -77,6 +77,19 @@ export interface PhaseAttachment {
   sizeBytes?: number;
 }
 
+export interface WorkflowDocument {
+  id: string;
+  workflowClientId: string;
+  filename: string;
+  description: string | null;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByUserId: string | null;
+  uploadedByName: string | null;
+  uploadedAt: string;
+  updatedAt: string;
+}
+
 export interface PhaseLink {
   id: string;
   phaseId: string;

@@ -1,4 +1,4 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Settings, LogOut } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useClientContext } from './ClientContext';
@@ -31,6 +31,30 @@ export function Layout() {
               <div className="text-xs text-text-muted -mt-0.5">Workflow</div>
             </div>
           </Link>
+
+          <nav className="flex items-center gap-1 ml-2">
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) =>
+                `text-sm px-3 py-1.5 rounded transition-colors ${
+                  isActive ? 'text-accent bg-surface' : 'text-text-muted hover:text-text-primary'
+                }`
+              }
+            >
+              Tracks
+            </NavLink>
+            <NavLink
+              to="/documents"
+              className={({ isActive }) =>
+                `text-sm px-3 py-1.5 rounded transition-colors ${
+                  isActive ? 'text-accent bg-surface' : 'text-text-muted hover:text-text-primary'
+                }`
+              }
+            >
+              Documents
+            </NavLink>
+          </nav>
 
           <div className="flex items-center gap-4">
             {canSwitch && clients.length > 0 && (

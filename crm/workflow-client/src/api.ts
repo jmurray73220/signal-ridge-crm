@@ -136,6 +136,46 @@ export async function deletePhaseLink(linkId: string) {
   return data;
 }
 
+// Document repository (client-level shared shelf)
+import type { WorkflowDocument } from './types';
+
+export async function listDocuments(workflowClientId: string): Promise<WorkflowDocument[]> {
+  const { data } = await api.get('/api/workflow/documents', { params: { workflowClientId } });
+  return data;
+}
+
+export async function uploadDocument(
+  workflowClientId: string,
+  file: File,
+  opts?: { description?: string; filename?: string },
+): Promise<WorkflowDocument> {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('workflowClientId', workflowClientId);
+  if (opts?.description) fd.append('description', opts.description);
+  if (opts?.filename) fd.append('filename', opts.filename);
+  const { data } = await api.post('/api/workflow/documents', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export function documentDownloadUrl(id: string) {
+  return `/api/workflow/documents/${id}/download`;
+}
+
+export async function updateDocument(
+  id: string,
+  body: { filename?: string; description?: string },
+): Promise<WorkflowDocument> {
+  const { data } = await api.put(`/api/workflow/documents/${id}`, body);
+  return data;
+}
+
+export async function deleteDocument(id: string) {
+  await api.delete(`/api/workflow/documents/${id}`);
+}
+
 export interface BookmarkCapture {
   id: string;
   userId: string;

@@ -497,9 +497,32 @@ model WorkflowClient {
   isInternal Boolean @default(false)
   createdAt DateTime @default(now())
 
-  tracks WorkflowTrack[]
-  sows   WorkflowSOW[]
-  users  User[]          @relation("WorkflowClientUsers")
+  tracks    WorkflowTrack[]
+  sows      WorkflowSOW[]
+  documents WorkflowDocument[]
+  users     User[]             @relation("WorkflowClientUsers")
+}
+
+// Client-level document repository: a shared shelf of reference files (MSAs,
+// SOWs, guidance, forms) that the firm and the client both refer to. Scoped to
+// a WorkflowClient like everything else; the firm sees every client's repo, a
+// client user only their own. Files stored base64 in Postgres, matching
+// PhaseAttachment. Clients may upload/download; only the firm may delete.
+model WorkflowDocument {
+  id               String         @id @default(uuid())
+  workflowClientId String
+  workflowClient   WorkflowClient @relation(fields: [workflowClientId], references: [id], onDelete: Cascade)
+  filename         String         // display name (defaults to the uploaded file's name; editable)
+  description      String?
+  mimeType         String
+  fileData         String         // Base64-encoded original file
+  sizeBytes        Int            @default(0)
+  uploadedByUserId String?
+  uploadedByName   String?        // denormalized uploader name for display
+  uploadedAt       DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([workflowClientId])
 }
 
 model WorkflowTrack {

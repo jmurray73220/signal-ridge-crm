@@ -19,6 +19,13 @@ import {
   createPhaseLink,
   deletePhaseLink,
 } from '../controllers/phaseAssetsController';
+import {
+  listDocuments,
+  uploadDocument,
+  downloadDocument,
+  updateDocument,
+  deleteDocument,
+} from '../controllers/documentsController';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -73,6 +80,15 @@ router.get('/phase-attachments/:attachmentId/download', downloadPhaseAttachment)
 router.delete('/phase-attachments/:attachmentId', requireWorkflowEditor, deletePhaseAttachment);
 router.post('/phases/:phaseId/links', requireWorkflowEditor, createPhaseLink);
 router.delete('/phase-links/:linkId', requireWorkflowEditor, deletePhaseLink);
+
+// Document repository — client-level shared shelf of reference files. Upload +
+// download are open to any workflow user (client scope enforced in the
+// controller); rename + delete are firm-only (requireWorkflowEditor).
+router.get('/documents', listDocuments);
+router.post('/documents', upload.single('file'), uploadDocument);
+router.get('/documents/:id/download', downloadDocument);
+router.put('/documents/:id', requireWorkflowEditor, updateDocument);
+router.delete('/documents/:id', requireWorkflowEditor, deleteDocument);
 
 // Milestones (UI label: "Steps") — Editors can create/update/delete since
 // step changes are routine operational work for anyone assigned to the
