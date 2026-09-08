@@ -1058,7 +1058,7 @@ function MilestoneBlock({
           {open ? <ChevronDown size={16} className="mt-0.5 text-text-muted" /> : <ChevronRight size={16} className="mt-0.5 text-text-muted" />}
           <div>
             <div className="font-medium">{milestone.title}</div>
-            {milestone.description && <p className="text-xs text-text-muted mt-1">{milestone.description}</p>}
+            {milestone.description && <p className="text-xs text-text-muted mt-1 whitespace-pre-wrap">{milestone.description}</p>}
             <div className="flex items-center gap-3 mt-1 text-xs text-text-muted flex-wrap">
               {milestone.dueDate && <span>Due {new Date(milestone.dueDate).toLocaleDateString()}</span>}
               {milestone.assignedTo && <span>Assigned: <span className="text-text-primary">@{milestone.assignedTo}</span></span>}
