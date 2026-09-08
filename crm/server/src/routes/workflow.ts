@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth';
 import {
@@ -28,7 +28,33 @@ import {
 } from '../controllers/documentsController';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+const MB = 1024 * 1024;
+// Phase attachments and extract-from-file stay at 50 MB. extract-from-file in
+// particular feeds the file to Claude, so it must not inherit a larger cap.
+const ATTACHMENT_LIMIT_MB = 50;
+// The client document repository holds occasional large reference files (a
+// 150 MB deck, say). Deliberately a separate instance so the cap here does not
+// leak onto the routes above. Note the file is buffered in memory and stored
+// base64 in Postgres, so raising this further has a real memory/DB cost.
+const DOCUMENT_LIMIT_MB = 200;
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: ATTACHMENT_LIMIT_MB * MB } });
+const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: DOCUMENT_LIMIT_MB * MB } });
+
+// multer reports an oversized file as a MulterError carrying no HTTP status,
+// which errorHandler would turn into a 500 with the bare message "File too
+// large". Wrap the middleware so the caller gets a 413 naming the real cap.
+function withUploadLimit(mw: RequestHandler, limitMb: number): RequestHandler {
+  return (req, res, next) =>
+    mw(req, res, (err: unknown) => {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: `File exceeds the ${limitMb} MB limit` });
+      }
+      if (err) return next(err);
+      return next();
+    });
+}
 
 router.use(requireAuth);
 router.use(requireWorkflow);
@@ -57,7 +83,7 @@ router.post('/tracks/probe-url', requireWorkflowEditor, ctl.probeOpportunityUrl)
 router.post('/tracks/extract-preview', requireWorkflowEditor, ctl.extractPreview);
 router.post('/tracks/:id/extract-from-url', requireWorkflowEditor, ctl.retryExtractTrackFromUrl);
 router.post('/tracks/:id/extract-from-text', requireWorkflowEditor, ctl.extractTrackFromText);
-router.post('/tracks/:id/extract-from-file', requireWorkflowEditor, upload.single('file'), ctl.extractTrackFromFile);
+router.post('/tracks/:id/extract-from-file', requireWorkflowEditor, withUploadLimit(upload.single('file'), ATTACHMENT_LIMIT_MB), ctl.extractTrackFromFile);
 router.put('/tracks/:id', requireWorkflowEditor, ctl.updateTrack);
 router.delete('/tracks/:id', requireWorkflowEditor, ctl.deleteTrack);
 // Singular alias per spec
@@ -75,7 +101,7 @@ router.put('/phases/:id', requireWorkflowEditor, ctl.updatePhase);
 router.delete('/phases/:id', requireWorkflowEditor, ctl.deletePhase);
 
 // Phase attachments + links — files and important URLs scoped to a phase.
-router.post('/phases/:phaseId/attachments', requireWorkflowEditor, upload.single('file'), uploadPhaseAttachment);
+router.post('/phases/:phaseId/attachments', requireWorkflowEditor, withUploadLimit(upload.single('file'), ATTACHMENT_LIMIT_MB), uploadPhaseAttachment);
 router.get('/phase-attachments/:attachmentId/download', downloadPhaseAttachment);
 router.delete('/phase-attachments/:attachmentId', requireWorkflowEditor, deletePhaseAttachment);
 router.post('/phases/:phaseId/links', requireWorkflowEditor, createPhaseLink);
@@ -85,7 +111,7 @@ router.delete('/phase-links/:linkId', requireWorkflowEditor, deletePhaseLink);
 // download are open to any workflow user (client scope enforced in the
 // controller); rename + delete are firm-only (requireWorkflowEditor).
 router.get('/documents', listDocuments);
-router.post('/documents', upload.single('file'), uploadDocument);
+router.post('/documents', withUploadLimit(documentUpload.single('file'), DOCUMENT_LIMIT_MB), uploadDocument);
 router.get('/documents/:id/download', downloadDocument);
 router.put('/documents/:id', requireWorkflowEditor, updateDocument);
 router.delete('/documents/:id', requireWorkflowEditor, deleteDocument);

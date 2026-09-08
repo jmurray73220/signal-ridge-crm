@@ -14,6 +14,11 @@ import { useAuth } from '../AuthContext';
 import { useClientContext } from '../ClientContext';
 import type { WorkflowDocument } from '../types';
 
+// Keep in sync with DOCUMENT_LIMIT_MB in crm/server/src/routes/workflow.ts.
+// Checked here too so an oversized file fails instantly instead of after the
+// whole upload has gone over the wire.
+const MAX_UPLOAD_MB = 200;
+
 function formatSize(bytes?: number) {
   if (!bytes) return '';
   if (bytes < 1024) return `${bytes} B`;
@@ -118,6 +123,11 @@ function UploadPanel({ workflowClientId, onUploaded }: { workflowClientId: strin
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (f.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      toast.error(`${f.name} is ${formatSize(f.size)} — the limit is ${MAX_UPLOAD_MB} MB`);
+      e.target.value = '';
+      return;
+    }
     setFile(f);
     if (!name.trim()) setName(f.name);
   }
@@ -167,10 +177,12 @@ function UploadPanel({ workflowClientId, onUploaded }: { workflowClientId: strin
         >
           <Upload size={14} /> {file ? 'Change file' : 'Choose file'}
         </button>
-        {file && (
+        {file ? (
           <span className="ml-3 text-xs text-text-muted">
             {file.name} · {formatSize(file.size)}
           </span>
+        ) : (
+          <span className="ml-3 text-xs text-text-muted">Up to {MAX_UPLOAD_MB} MB</span>
         )}
       </div>
 
