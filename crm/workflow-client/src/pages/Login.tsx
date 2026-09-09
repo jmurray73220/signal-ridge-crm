@@ -69,6 +69,15 @@ export function Login() {
             {submitting ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+
+        {/* Plain anchor, not a router Link: /auth/forgot-password is a server
+            route that redirects to the CRM app's reset pages, which own the
+            only implementation of this flow. See server/src/services/appUrls.ts. */}
+        <div className="mt-5 text-center">
+          <a href="/auth/forgot-password" className="text-xs text-text-muted hover:text-text-primary">
+            Forgot password?
+          </a>
+        </div>
       </div>
     </div>
   );

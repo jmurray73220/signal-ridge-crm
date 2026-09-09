@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import prisma from '../services/prisma';
 import { AuthRequest, JwtPayload } from '../types';
+import { resetPasswordUrl } from '../services/appUrls';
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-prod';
 const JWT_EXPIRES_IN = '8h';
 
@@ -178,8 +179,7 @@ export async function forgotPassword(req: Request, res: Response) {
       data: { resetToken: token, resetTokenExpiry: expiry },
     });
 
-    const appUrl = process.env.APP_URL || 'http://localhost:5173';
-    const resetUrl = `${appUrl}/reset-password?token=${token}`;
+    const resetUrl = resetPasswordUrl(token);
 
     return res.json({
       message: 'Reset link generated. Share this link with the user.',
