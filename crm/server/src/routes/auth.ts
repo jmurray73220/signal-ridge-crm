@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { login, logout, me, changePassword, forceChangePassword, register, forgotPassword, resetPassword } from '../controllers/authController';
 import { requireAuth } from '../middleware/auth';
-import { forgotPasswordUrl } from '../services/appUrls';
+import { forgotPasswordUrl, parseReturnApp } from '../services/appUrls';
 
 const router = Router();
 
@@ -15,7 +15,8 @@ router.post('/register', register);
 // link lands here); POST = "generate a reset link for this email". Mounted at
 // /auth, which both vite dev proxies forward, so the redirect behaves the same
 // locally and in production.
-router.get('/forgot-password', (_req, res) => res.redirect(forgotPasswordUrl()));
+router.get('/forgot-password', (req, res) =>
+  res.redirect(forgotPasswordUrl(req, parseReturnApp(req.query.from))));
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 

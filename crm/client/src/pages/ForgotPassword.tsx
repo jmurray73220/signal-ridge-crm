@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { authApi } from '../api';
 import toast from 'react-hot-toast';
 
 export function ForgotPassword() {
+  // ?from=workflow means the user started at the workflow sign-in; every exit
+  // from this flow should return them there rather than to the CRM login.
+  const [searchParams] = useSearchParams();
+  const from = searchParams.get('from') === 'workflow' ? 'workflow' : undefined;
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetUrl, setResetUrl] = useState('');
@@ -13,7 +17,7 @@ export function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await authApi.forgotPassword(email);
+      const res = await authApi.forgotPassword(email, from);
       setSubmitted(true);
       if (res.data.resetUrl) {
         setResetUrl(res.data.resetUrl);
@@ -97,7 +101,11 @@ export function ForgotPassword() {
         </div>
 
         <p className="text-center text-xs mt-6" style={{ color: '#8b949e' }}>
-          <Link to="/login" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</Link>
+          {from === 'workflow' ? (
+            <a href="/workflow/" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</a>
+          ) : (
+            <Link to="/login" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</Link>
+          )}
         </p>
       </div>
     </div>

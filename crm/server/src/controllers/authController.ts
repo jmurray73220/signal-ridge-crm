@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import prisma from '../services/prisma';
 import { AuthRequest, JwtPayload } from '../types';
-import { resetPasswordUrl } from '../services/appUrls';
+import { resetPasswordUrl, signInUrl, parseReturnApp } from '../services/appUrls';
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-prod';
 const JWT_EXPIRES_IN = '8h';
 
@@ -162,6 +162,8 @@ export async function register(req: Request, res: Response) {
 
 export async function forgotPassword(req: Request, res: Response) {
   const { email } = req.body;
+  // Which app the user started from, so the flow can return them there.
+  const from = parseReturnApp(req.body.from ?? req.query.from);
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
   try {
@@ -179,11 +181,12 @@ export async function forgotPassword(req: Request, res: Response) {
       data: { resetToken: token, resetTokenExpiry: expiry },
     });
 
-    const resetUrl = resetPasswordUrl(token);
+    const resetUrl = resetPasswordUrl(token, req, from);
 
     return res.json({
       message: 'Reset link generated. Share this link with the user.',
       resetUrl,
+      signInUrl: signInUrl(req, from),
     });
   } catch (err) {
     console.error(err);

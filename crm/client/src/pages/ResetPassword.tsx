@@ -7,6 +7,9 @@ export function ResetPassword() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
+  // ?from=workflow is carried through from the workflow sign-in so a finished
+  // reset returns the user to the tool they started in, not the CRM login.
+  const fromWorkflow = searchParams.get('from') === 'workflow';
   const [form, setForm] = useState({ password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +24,12 @@ export function ResetPassword() {
     try {
       await authApi.resetPassword(token, form.password);
       toast.success('Password reset successfully');
-      navigate('/login');
+      if (fromWorkflow) {
+        // Full page load: /workflow is a separate SPA, not a route in this one.
+        window.location.assign('/workflow/');
+      } else {
+        navigate('/login');
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Reset failed');
     } finally {
@@ -89,7 +97,11 @@ export function ResetPassword() {
         </div>
 
         <p className="text-center text-xs mt-6" style={{ color: '#8b949e' }}>
-          <Link to="/login" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</Link>
+          {fromWorkflow ? (
+            <a href="/workflow/" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</a>
+          ) : (
+            <Link to="/login" style={{ color: '#c9a84c', textDecoration: 'none' }}>Back to Sign In</Link>
+          )}
         </p>
       </div>
     </div>

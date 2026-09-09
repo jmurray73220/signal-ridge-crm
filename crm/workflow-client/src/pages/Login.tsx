@@ -74,7 +74,7 @@ export function Login() {
             route that redirects to the CRM app's reset pages, which own the
             only implementation of this flow. See server/src/services/appUrls.ts. */}
         <div className="mt-5 text-center">
-          <a href="/auth/forgot-password" className="text-xs text-text-muted hover:text-text-primary">
+          <a href="/auth/forgot-password?from=workflow" className="text-xs text-text-muted hover:text-text-primary">
             Forgot password?
           </a>
         </div>

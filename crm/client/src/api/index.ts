@@ -13,8 +13,11 @@ export const authApi = {
     api.post('/auth/force-change-password', { newPassword }),
   register: (data: { email: string; firstName: string; lastName: string; password: string }) =>
     api.post('/auth/register', data),
-  forgotPassword: (email: string) =>
-    api.post<{ message: string; resetUrl?: string }>('/auth/forgot-password', { email }),
+  forgotPassword: (email: string, from?: string) =>
+    api.post<{ message: string; resetUrl?: string; signInUrl?: string }>(
+      '/auth/forgot-password',
+      { email, from },
+    ),
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
 };
